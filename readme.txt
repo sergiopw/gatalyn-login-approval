@@ -3,7 +3,7 @@ Contributors: sergiopw
 Tags: login, security, 2fa, authentication, telegram
 Requires at least: 5.6
 Tested up to: 7.0
-Stable tag: 1.1.0
+Stable tag: 1.0.0
 Requires PHP: 7.4
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
@@ -52,5 +52,5 @@ Yes, you can add your IP address (or multiple IP addresses, one per line) in the
 
 == Changelog ==
 
-= 1.1.0 =
+= 1.0.0 =
 * Initial public release.

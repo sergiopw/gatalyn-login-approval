@@ -4,7 +4,7 @@
  * Plugin Name: Gatalyn Login Approval
  * Plugin URI:  https://github.com/sergiopw/gatalyn-login-approval
  * Description: Adds email and/or Telegram-based login approval before or after credential entry.
- * Version:     1.1.0
+ * Version:     1.0.0
  * Requires at least: 5.6
  * Tested up to: 7.0
  * Requires PHP: 7.4
@@ -19,7 +19,7 @@ if (! defined('ABSPATH')) {
 }
 
 if (! defined('GATALYN_VERSION')) {
-    define('GATALYN_VERSION', '1.1.0');
+    define('GATALYN_VERSION', '1.0.0');
 }
 
 if (! defined('GATALYN_PLUGIN_FILE')) {

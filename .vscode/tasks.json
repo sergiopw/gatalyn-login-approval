@@ -1,0 +1,88 @@
+{
+	"version": "2.0.0",
+	"tasks": [
+		{
+			"label": "Local WP Up",
+			"type": "shell",
+			"command": "docker",
+			"args": [
+				"compose",
+				"up",
+				"-d",
+				"db",
+				"wordpress",
+				"mailpit"
+			],
+			"isBackground": false,
+			"presentation": {
+				"reveal": "never",
+				"panel": "dedicated",
+				"clear": true,
+				"showReuseMessage": false,
+				"focus": false,
+				"close": true
+			}
+		},
+		{
+			"label": "Local WP Bootstrap",
+			"type": "shell",
+			"command": "docker",
+			"args": [
+				"compose",
+				"run",
+				"--rm",
+				"wpcli",
+				"sh",
+				"/workspace/.docker/wp-cli-install.sh"
+			],
+			"isBackground": false,
+			"presentation": {
+				"reveal": "never",
+				"panel": "dedicated",
+				"clear": true,
+				"showReuseMessage": false,
+				"focus": false,
+				"close": true
+			}
+		},
+		{
+			"label": "Local WP Down",
+			"type": "shell",
+			"command": "docker",
+			"args": [
+				"compose",
+				"down"
+			],
+			"isBackground": false,
+			"presentation": {
+				"reveal": "never",
+				"panel": "dedicated",
+				"clear": true,
+				"showReuseMessage": false,
+				"focus": false,
+				"close": true
+			}
+		},
+		{
+			"label": "Build plugin zip",
+			"type": "shell",
+			"command": "powershell",
+			"args": [
+				"-ExecutionPolicy",
+				"Bypass",
+				"-File",
+				"build-plugin.ps1"
+			],
+			"isBackground": false,
+			"group": "build",
+			"presentation": {
+				"reveal": "never",
+				"panel": "dedicated",
+				"clear": true,
+				"showReuseMessage": false,
+				"focus": false,
+				"close": true
+			}
+		}
+	]
+}

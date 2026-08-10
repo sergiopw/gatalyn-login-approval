@@ -10,8 +10,9 @@ if (! defined('WP_UNINSTALL_PLUGIN')) {
 	exit;
 }
 
-// Remove all registered options.
-$options = array(
+// Remove all registered options. Variables are prefixed because uninstall.php
+// runs in the global scope.
+$gatalyn_options = array(
 	'gatalyn_enabled',
 	'gatalyn_mode',
 	'gatalyn_allowed_ips',
@@ -25,8 +26,8 @@ $options = array(
 	'gatalyn_telegram_message',
 );
 
-foreach ($options as $option) {
-	delete_option($option);
+foreach ($gatalyn_options as $gatalyn_option) {
+	delete_option($gatalyn_option);
 }
 
 // Remove any Gatalyn transients that may still be stored in the options table,

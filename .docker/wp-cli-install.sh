@@ -18,9 +18,9 @@ if ! wp core is-installed --allow-root >/dev/null 2>&1; then
 fi
 
 wp plugin activate gatalyn-login-approval --allow-root
-wp option update wla_enabled 1 --allow-root
-wp option update wla_mode before --allow-root
-wp option update wla_token_expiry 60 --allow-root
+wp option update gatalyn_enabled 1 --allow-root
+wp option update gatalyn_mode before --allow-root
+wp option update gatalyn_token_expiry 60 --allow-root
 
 if ! wp user get tester --field=ID --allow-root >/dev/null 2>&1; then
   wp user create tester tester@example.com \

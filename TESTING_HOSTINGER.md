@@ -37,11 +37,11 @@
 ```
 - PC debería redirigirse automáticamente
 - Browser console (PC) mostrará:
-  [WLA] Initialized polling for request_id: (id aquí)
-  [WLA] Poll #1 checking: https://tudominio.com/wp-login.php?action=wla_check_approval&request_id=...
+  [Gatalyn] Initialized polling for request_id: (id aquí)
+  [Gatalyn] Poll #1 checking: https://tudominio.com/wp-login.php?action=gatalyn_check_approval&request_id=...
   ...
-  [WLA] Status: approved
-  [WLA] Approved! Redirecting to: https://tudominio.com/wp-login.php?wla_approved=1&...
+  [Gatalyn] Status: approved
+  [Gatalyn] Approved! Redirecting to: https://tudominio.com/wp-login.php?gatalyn_approved=1&...
 ```
 
 ## Debugging - Browser Console Logs
@@ -51,26 +51,26 @@
 - **Chrome/Firefox**: F12 → Console
 - **Safari**: Cmd+Option+I → Console
 
-### Busca logs [WLA]:
+### Busca logs [Gatalyn]:
 
 ```
-[WLA] Initialized polling for request_id: 12a4b5c6d7e8f9...
-[WLA] Poll #1 checking: https://...
-[WLA] Response received, status: 200
-[WLA] JSON parsed: {success: true, data: {status: "pending"}}
-[WLA] Status: pending
-[WLA] Scheduling next poll in 3s
+[Gatalyn] Initialized polling for request_id: 12a4b5c6d7e8f9...
+[Gatalyn] Poll #1 checking: https://...
+[Gatalyn] Response received, status: 200
+[Gatalyn] JSON parsed: {success: true, data: {status: "pending"}}
+[Gatalyn] Status: pending
+[Gatalyn] Scheduling next poll in 3s
 ...
-[WLA] Status: approved
-[WLA] Approved! Redirecting to: https://...
+[Gatalyn] Status: approved
+[Gatalyn] Approved! Redirecting to: https://...
 ```
 
 ### Si hay errores:
 
 ```
-[WLA] Fetch error: Network error or timeout
-[WLA] JSON parse error: Unexpected token < in JSON at position 0
-[WLA] Unexpected payload: {success: false, ...}
+[Gatalyn] Fetch error: Network error or timeout
+[Gatalyn] JSON parse error: Unexpected token < in JSON at position 0
+[Gatalyn] Unexpected payload: {success: false, ...}
 ```
 
 ## Troubleshooting
@@ -125,7 +125,7 @@ LIMIT 20;
 Puedes probar el endpoint de revisión manualmente:
 
 ```
-https://tu-dominio.com/wp-login.php?action=wla_check_approval&request_id=12a4b5c6d7e8f9...
+https://tu-dominio.com/wp-login.php?action=gatalyn_check_approval&request_id=12a4b5c6d7e8f9...
 
 Debería devolver JSON:
 {"success":true,"data":{"status":"pending"}}
@@ -149,7 +149,7 @@ O cuando está aprobado:
 
 1. Descarga e instala el ZIP actualizado
 2. Prueba el flujo "before" con 2 dispositivos
-3. Abre la consola del navegador (F12) para ver los logs [WLA]
+3. Abre la consola del navegador (F12) para ver los logs [Gatalyn]
 4. Reporta cualquier error que veas en la consola
 
 ¡El polling ahora tiene logging completo para facilitar el debugging!

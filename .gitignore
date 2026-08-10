@@ -18,10 +18,11 @@
 /wp-*.php
 /xmlrpc.php
 
-# ...except this plugin's own bootstrap file and root "silence is golden"
-# stub, which the WordPress core-ignore rules above (/wp-*.php, /index.php)
-# would otherwise swallow (see build-dist.sh / build-plugin.ps1).
-!/wp-login-approval-plugin.php
+# ...except the root "silence is golden" stub, which the WordPress
+# core-ignore rule above (/index.php) would otherwise swallow
+# (see build-dist.sh / build-plugin.ps1). The plugin bootstrap
+# gatalyn-login-approval.php no longer needs an exception: it stopped
+# matching /wp-*.php when it was renamed.
 !/index.php
 
 # Configuration

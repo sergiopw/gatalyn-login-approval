@@ -1,0 +1,11 @@
+# Keep LF in the working copy on every platform. Without this, Git on Windows
+# checks the sources out with CRLF, and the release script copies those CRLF
+# files straight into the WordPress.org SVN trunk - harmless for PHP, but it
+# makes every release diff look like the whole file changed.
+* text=auto eol=lf
+
+# Never touch line endings inside binaries.
+*.zip binary
+*.png binary
+*.jpg binary
+*.gif binary

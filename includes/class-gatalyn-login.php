@@ -940,57 +940,7 @@ class Gatalyn_Login
      */
     private function is_ip_allowed()
     {
-        if (empty($this->allowed_ips)) {
-            return false;
-        }
-
-        $client_ip = $this->get_client_ip();
-
-        foreach ($this->allowed_ips as $allowed) {
-            if (strpos($allowed, '/') !== false) {
-                if ($this->ip_in_cidr($client_ip, $allowed)) {
-                    return true;
-                }
-            } elseif ($allowed === $client_ip) {
-                return true;
-            }
-        }
-
-        return false;
-    }
-
-    /**
-     * Checks whether $ip falls within the IPv4 CIDR range $cidr.
-     *
-     * @param string $ip IPv4 address.
-     * @param string $cidr CIDR notation.
-     *
-     * @return bool
-     */
-    private function ip_in_cidr($ip, $cidr)
-    {
-        $parts = explode('/', $cidr, 2);
-        if (2 !== count($parts)) {
-            return false;
-        }
-
-        $subnet = $parts[0];
-        $prefix = (int) $parts[1];
-
-        if ($prefix < 0 || $prefix > 32) {
-            return false;
-        }
-
-        $ip_long     = ip2long($ip);
-        $subnet_long = ip2long($subnet);
-
-        if (false === $ip_long || false === $subnet_long) {
-            return false;
-        }
-
-        $mask = $prefix > 0 ? (~0 << (32 - $prefix)) : 0;
-
-        return ($ip_long & $mask) === ($subnet_long & $mask);
+        return Gatalyn_IP::is_allowed($this->allowed_ips);
     }
 
     /**
@@ -1094,22 +1044,7 @@ class Gatalyn_Login
      */
     private function get_client_ip()
     {
-        $ip = isset($_SERVER['REMOTE_ADDR'])
-            ? sanitize_text_field(wp_unslash($_SERVER['REMOTE_ADDR']))
-            : '';
-
-        if (defined('GATALYN_TRUST_PROXY') && GATALYN_TRUST_PROXY) {
-            $forwarded = isset($_SERVER['HTTP_X_FORWARDED_FOR'])
-                ? sanitize_text_field(wp_unslash($_SERVER['HTTP_X_FORWARDED_FOR']))
-                : '';
-
-            if (! empty($forwarded)) {
-                $parts = explode(',', $forwarded);
-                $ip    = trim($parts[0]);
-            }
-        }
-
-        return $ip;
+        return Gatalyn_IP::get_client_ip();
     }
 
     /**

@@ -3,12 +3,12 @@ Contributors: sergiopw
 Tags: login, security, 2fa, authentication, telegram
 Requires at least: 5.6
 Tested up to: 7.0
-Stable tag: 1.0.0
+Stable tag: 1.1.0
 Requires PHP: 7.4
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
-Adds email and/or Telegram-based login approval before or after credential entry.
+Login approval by email or Telegram, failed-attempt lockout, and REST API restrictions.
 
 == Description ==
 
@@ -23,6 +23,11 @@ Features include:
 *   IP whitelisting to bypass approvals for trusted networks
 *   Customizable email/Telegram subjects and messages
 *   Token expiration times
+
+Two optional hardening features are also included. Both are disabled by default:
+
+*   **Limit Login Attempts:** Temporarily blocks an IP address after a configurable number of failed logins. Blocked attempts are rejected before the approval step, so you are not notified for every attempt an attacker makes while their address is locked out. Whitelisted addresses are never blocked.
+*   **REST API Restrictions:** Either hides `/wp-json/wp/v2/users` from visitors, which stops username enumeration and affects nothing else, or requires authentication for the whole REST API.
 
 == Installation ==
 
@@ -48,9 +53,22 @@ You need to create a bot via BotFather on Telegram to get your Bot Token. Then, 
 
 = Can I whitelist my IP? =
 
-Yes, you can add your IP address (or multiple IP addresses, one per line) in the plugin settings to completely bypass the approval process.
+Yes, you can add your IP address (or multiple IP addresses, one per line) in the plugin settings to completely bypass the approval process. Whitelisted addresses are also exempt from the login attempt lockout.
+
+= I locked myself out with the login attempt limiter. What now? =
+
+Wait for the lockout to expire (15 minutes by default). If you cannot wait, delete the `gatalyn_limit_attempts_enabled` option from the database, or rename the plugin folder over FTP to deactivate it.
+
+= Will restricting the REST API break my site? =
+
+"Hide the users endpoint" will not: it only removes the route that lists your usernames. "Require login for the whole REST API" can, because plugins and themes often call the API from the front end without a session, for example contact forms, AJAX search, store endpoints, or page builders. Only oEmbed stays public so that existing embeds of your site elsewhere keep working. Test your front end after enabling it.
 
 == Changelog ==
+
+= 1.1.0 =
+* New: optional login attempt limiting, blocking an IP address for a configurable time after repeated failures. Blocked attempts are rejected before the approval flow runs, so no approval email or Telegram message is sent for them.
+* New: optional REST API restrictions, with separate levels for hiding the users endpoint and for requiring authentication site-wide.
+* Client IP resolution moved to a shared helper so every module handles the GATALYN_TRUST_PROXY setting identically.
 
 = 1.0.0 =
 * Initial public release.

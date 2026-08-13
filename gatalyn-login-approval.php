@@ -3,8 +3,8 @@
 /**
  * Plugin Name: Gatalyn Login Approval
  * Plugin URI:  https://github.com/sergiopw/gatalyn-login-approval
- * Description: Adds email and/or Telegram-based login approval before or after credential entry.
- * Version:     1.0.0
+ * Description: Login approval by email or Telegram, failed-attempt lockout, and REST API restrictions.
+ * Version:     1.1.0
  * Requires at least: 5.6
  * Tested up to: 7.0
  * Requires PHP: 7.4
@@ -19,7 +19,7 @@ if (! defined('ABSPATH')) {
 }
 
 if (! defined('GATALYN_VERSION')) {
-    define('GATALYN_VERSION', '1.0.0');
+    define('GATALYN_VERSION', '1.1.0');
 }
 
 if (! defined('GATALYN_PLUGIN_FILE')) {
@@ -30,11 +30,15 @@ if (! defined('GATALYN_PLUGIN_DIR')) {
     define('GATALYN_PLUGIN_DIR', plugin_dir_path(__FILE__));
 }
 
+require_once GATALYN_PLUGIN_DIR . 'includes/class-gatalyn-ip.php';
+require_once GATALYN_PLUGIN_DIR . 'includes/class-gatalyn-store.php';
 require_once GATALYN_PLUGIN_DIR . 'includes/class-gatalyn-token.php';
 require_once GATALYN_PLUGIN_DIR . 'includes/class-gatalyn-email.php';
 require_once GATALYN_PLUGIN_DIR . 'includes/class-gatalyn-telegram.php';
 require_once GATALYN_PLUGIN_DIR . 'includes/class-gatalyn-settings.php';
 require_once GATALYN_PLUGIN_DIR . 'includes/class-gatalyn-login.php';
+require_once GATALYN_PLUGIN_DIR . 'includes/class-gatalyn-limit-login.php';
+require_once GATALYN_PLUGIN_DIR . 'includes/class-gatalyn-rest-api.php';
 
 /**
  * Sets default options on activation without overriding existing values.
@@ -52,6 +56,13 @@ function gatalyn_activate_plugin()
     add_option('gatalyn_telegram_bot_token', '');
     add_option('gatalyn_telegram_chat_id', '');
     add_option('gatalyn_telegram_message', '');
+
+    // Hardening modules ship disabled: both can lock a site owner out of their
+    // own install or break front-end features, so they must be opted into.
+    add_option('gatalyn_limit_attempts_enabled', '');
+    add_option('gatalyn_max_attempts', 5);
+    add_option('gatalyn_lockout_minutes', 15);
+    add_option('gatalyn_rest_api_mode', 'off');
 
     if (! wp_next_scheduled('gatalyn_daily_garbage_collection')) {
         wp_schedule_event(time(), 'daily', 'gatalyn_daily_garbage_collection');
@@ -72,6 +83,17 @@ add_action('gatalyn_daily_garbage_collection', array('Gatalyn_Token', 'run_garba
  */
 $GLOBALS['gatalyn_login_handler'] = new Gatalyn_Login();
 $GLOBALS['gatalyn_login_handler']->init();
+
+/*
+ * Hardening modules. Both register on the same early pass as the login handler:
+ * the limiter filters 'authenticate', and REST restrictions must be in place
+ * before rest_api_init runs.
+ */
+$GLOBALS['gatalyn_limit_login'] = new Gatalyn_Limit_Login();
+$GLOBALS['gatalyn_limit_login']->init();
+
+$GLOBALS['gatalyn_rest_api'] = new Gatalyn_REST_API();
+$GLOBALS['gatalyn_rest_api']->init();
 
 /*
  * Settings page: only needed inside wp-admin.

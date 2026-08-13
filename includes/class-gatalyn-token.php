@@ -433,6 +433,9 @@ class Gatalyn_Token
 			self::REVOKED_PREFIX,
 			'gatalyn_request_',
 			'gatalyn_revoked_',
+			// Login lockout state written by Gatalyn_Store. Its option copy
+			// carries an 'expires' key, so the loop below already handles it.
+			Gatalyn_Limit_Login::KEY_PREFIX,
 		);
 
 		foreach ($prefixes as $prefix) {

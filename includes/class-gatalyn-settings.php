@@ -17,6 +17,10 @@
  *   gatalyn_telegram_bot_token   (string) Telegram bot token from @BotFather.
  *   gatalyn_telegram_chat_id     (string) Destination Telegram chat / group ID.
  *   gatalyn_telegram_message     (string) Message template with the same variables as the email.
+ *   gatalyn_limit_attempts_enabled (bool)   Lock out an IP after repeated login failures.
+ *   gatalyn_max_attempts         (int)    Failed attempts allowed before locking out (default 5).
+ *   gatalyn_lockout_minutes      (int)    Lockout duration in minutes (default 15).
+ *   gatalyn_rest_api_mode        (string) 'off', 'users', or 'all'.
  */
 
 if (! defined('ABSPATH')) {
@@ -173,6 +177,46 @@ class Gatalyn_Settings
 			)
 		);
 
+		register_setting(
+			self::OPTIONS_GROUP,
+			'gatalyn_limit_attempts_enabled',
+			array(
+				'type'              => 'boolean',
+				'sanitize_callback' => array($this, 'sanitize_checkbox'),
+				'default'           => false,
+			)
+		);
+
+		register_setting(
+			self::OPTIONS_GROUP,
+			'gatalyn_max_attempts',
+			array(
+				'type'              => 'integer',
+				'sanitize_callback' => array($this, 'sanitize_max_attempts'),
+				'default'           => 5,
+			)
+		);
+
+		register_setting(
+			self::OPTIONS_GROUP,
+			'gatalyn_lockout_minutes',
+			array(
+				'type'              => 'integer',
+				'sanitize_callback' => array($this, 'sanitize_lockout_minutes'),
+				'default'           => 15,
+			)
+		);
+
+		register_setting(
+			self::OPTIONS_GROUP,
+			'gatalyn_rest_api_mode',
+			array(
+				'type'              => 'string',
+				'sanitize_callback' => array($this, 'sanitize_rest_api_mode'),
+				'default'           => 'off',
+			)
+		);
+
 		// ---- General section ------------------------------------------------
 
 		add_settings_section(
@@ -286,6 +330,47 @@ class Gatalyn_Settings
 			array($this, 'field_telegram_message'),
 			self::MENU_SLUG,
 			'gatalyn_telegram'
+		);
+
+		// ---- Security hardening section --------------------------------------
+
+		add_settings_section(
+			'gatalyn_hardening',
+			__('Security Hardening', 'gatalyn-login-approval'),
+			array($this, 'hardening_section_description'),
+			self::MENU_SLUG
+		);
+
+		add_settings_field(
+			'gatalyn_limit_attempts_enabled',
+			__('Limit Login Attempts', 'gatalyn-login-approval'),
+			array($this, 'field_limit_attempts_enabled'),
+			self::MENU_SLUG,
+			'gatalyn_hardening'
+		);
+
+		add_settings_field(
+			'gatalyn_max_attempts',
+			__('Allowed Failed Attempts', 'gatalyn-login-approval'),
+			array($this, 'field_max_attempts'),
+			self::MENU_SLUG,
+			'gatalyn_hardening'
+		);
+
+		add_settings_field(
+			'gatalyn_lockout_minutes',
+			__('Lockout Duration', 'gatalyn-login-approval'),
+			array($this, 'field_lockout_minutes'),
+			self::MENU_SLUG,
+			'gatalyn_hardening'
+		);
+
+		add_settings_field(
+			'gatalyn_rest_api_mode',
+			__('REST API Access', 'gatalyn-login-approval'),
+			array($this, 'field_rest_api_mode'),
+			self::MENU_SLUG,
+			'gatalyn_hardening'
 		);
 
 		add_settings_field(
@@ -874,9 +959,114 @@ class Gatalyn_Settings
 	 *
 	 * @return string
 	 */
+	public function hardening_section_description()
+	{
+	?>
+		<p>
+			<?php esc_html_e('Optional protections that work independently of the approval flow. Both are off by default because they can lock you out of your own site or disable front-end features.', 'gatalyn-login-approval'); ?>
+		</p>
+		<p>
+			<?php esc_html_e('Addresses listed under Allowed IP Addresses are never locked out.', 'gatalyn-login-approval'); ?>
+		</p>
+	<?php
+	}
+	public function field_limit_attempts_enabled()
+	{
+		$value = get_option('gatalyn_limit_attempts_enabled', '');
+	?>
+		<label>
+			<input
+				type="checkbox"
+				name="gatalyn_limit_attempts_enabled"
+				id="gatalyn_limit_attempts_enabled"
+				value="1"
+				<?php checked('1', $value); ?> />
+			<?php esc_html_e('Temporarily block an IP address after repeated failed logins', 'gatalyn-login-approval'); ?>
+		</label>
+		<p class="description">
+			<?php esc_html_e('A blocked attempt is rejected before the approval step, so no approval email or Telegram message is sent while an address is locked out.', 'gatalyn-login-approval'); ?>
+		</p>
+	<?php
+	}
+	public function field_max_attempts()
+	{
+		$value = (int) get_option('gatalyn_max_attempts', 5);
+	?>
+		<input
+			type="number"
+			name="gatalyn_max_attempts"
+			id="gatalyn_max_attempts"
+			value="<?php echo esc_attr($value); ?>"
+			min="1"
+			max="50"
+			step="1"
+			class="small-text" />
+		<?php esc_html_e('attempts', 'gatalyn-login-approval'); ?>
+		<p class="description">
+			<?php esc_html_e('Failed logins allowed from one IP address before the lockout starts (1–50).', 'gatalyn-login-approval'); ?>
+		</p>
+	<?php
+	}
+	public function field_lockout_minutes()
+	{
+		$value = (int) get_option('gatalyn_lockout_minutes', 15);
+	?>
+		<input
+			type="number"
+			name="gatalyn_lockout_minutes"
+			id="gatalyn_lockout_minutes"
+			value="<?php echo esc_attr($value); ?>"
+			min="1"
+			max="1440"
+			step="1"
+			class="small-text" />
+		<?php esc_html_e('minutes', 'gatalyn-login-approval'); ?>
+		<p class="description">
+			<?php esc_html_e('How long the address stays blocked (1–1440 minutes).', 'gatalyn-login-approval'); ?>
+		</p>
+	<?php
+	}
+	public function field_rest_api_mode()
+	{
+		$value = (string) get_option('gatalyn_rest_api_mode', 'off');
+	?>
+		<select name="gatalyn_rest_api_mode" id="gatalyn_rest_api_mode">
+			<option value="off" <?php selected('off', $value); ?>>
+				<?php esc_html_e('No restriction', 'gatalyn-login-approval'); ?>
+			</option>
+			<option value="users" <?php selected('users', $value); ?>>
+				<?php esc_html_e('Hide the users endpoint from visitors (recommended)', 'gatalyn-login-approval'); ?>
+			</option>
+			<option value="all" <?php selected('all', $value); ?>>
+				<?php esc_html_e('Require login for the whole REST API', 'gatalyn-login-approval'); ?>
+			</option>
+		</select>
+		<p class="description">
+			<?php esc_html_e('"Hide the users endpoint" stops /wp-json/wp/v2/users from listing your usernames, which is what makes brute-force attacks cheap. It affects nothing else, so it is safe to leave on.', 'gatalyn-login-approval'); ?>
+		</p>
+		<p class="description">
+			<strong><?php esc_html_e('Warning:', 'gatalyn-login-approval'); ?></strong>
+			<?php esc_html_e('"Require login for the whole REST API" will break any front-end feature that calls the API without a session, such as contact forms, AJAX search, store endpoints, or page builders. Only oEmbed stays public. Test your site after enabling it.', 'gatalyn-login-approval'); ?>
+		</p>
+	<?php
+	}
 	public function sanitize_checkbox($value)
 	{
 		return $value ? '1' : '';
+	}
+	public function sanitize_max_attempts($value)
+	{
+		$value = absint($value);
+		return max(1, min(50, $value));
+	}
+	public function sanitize_lockout_minutes($value)
+	{
+		$value = absint($value);
+		return max(1, min(1440, $value));
+	}
+	public function sanitize_rest_api_mode($value)
+	{
+		return in_array($value, array('off', 'users', 'all'), true) ? $value : 'off';
 	}
 
 	/**

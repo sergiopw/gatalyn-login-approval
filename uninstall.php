@@ -24,6 +24,10 @@ $gatalyn_options = array(
 	'gatalyn_telegram_bot_token',
 	'gatalyn_telegram_chat_id',
 	'gatalyn_telegram_message',
+	'gatalyn_limit_attempts_enabled',
+	'gatalyn_max_attempts',
+	'gatalyn_lockout_minutes',
+	'gatalyn_rest_api_mode',
 );
 
 foreach ($gatalyn_options as $gatalyn_option) {
@@ -31,9 +35,9 @@ foreach ($gatalyn_options as $gatalyn_option) {
 }
 
 // Remove any Gatalyn transients that may still be stored in the options table,
-// plus the plain gatalyn_request_*/gatalyn_revoked_*/gatalyn_approval_* rows written
-// directly via update_option() as a fallback for hosts that don't reliably
-// persist transients (see class-gatalyn-token.php).
+// plus the plain gatalyn_request_*/gatalyn_revoked_*/gatalyn_approval_*/gatalyn_ll_*
+// rows written directly via update_option() as a fallback for hosts that don't
+// reliably persist transients (see class-gatalyn-token.php and class-gatalyn-store.php).
 global $wpdb;
 
 $wpdb->query(
@@ -43,12 +47,14 @@ $wpdb->query(
 		    OR option_name LIKE %s
 		    OR option_name LIKE %s
 		    OR option_name LIKE %s
+		    OR option_name LIKE %s
 		    OR option_name LIKE %s",
 		$wpdb->esc_like('_transient_gatalyn_') . '%',
 		$wpdb->esc_like('_transient_timeout_gatalyn_') . '%',
 		$wpdb->esc_like('gatalyn_request_') . '%',
 		$wpdb->esc_like('gatalyn_revoked_') . '%',
-		$wpdb->esc_like('gatalyn_approval_') . '%'
+		$wpdb->esc_like('gatalyn_approval_') . '%',
+		$wpdb->esc_like('gatalyn_ll_') . '%'
 	)
 );
 

@@ -33,6 +33,7 @@ Two optional hardening features are also included. Both are disabled by default:
     *   Lockout log with the usernames tried, and one-click unlock.
     *   Lockout alerts by email and/or Telegram.
     *   Reverse proxy / CDN setting, with a hint about which one your site needs.
+    *   Permanent blocklists for IP addresses (IPv4 and IPv6, with CIDR ranges) and for usernames such as "admin". Allowed IP addresses always win, and the plugin refuses to save a blocklist that contains your own address.
 *   **REST API Restrictions:** Either hides `/wp-json/wp/v2/users` from visitors, which stops username enumeration and affects nothing else, or requires authentication for the whole REST API.
 
 = Switching from Limit Login Attempts =
@@ -69,7 +70,7 @@ You need to create a bot via BotFather on Telegram to get your Bot Token. Then, 
 
 = Can I whitelist my IP? =
 
-Yes, you can add your IP address (or multiple IP addresses, one per line) in the plugin settings to completely bypass the approval process. Whitelisted addresses are also exempt from the login attempt lockout.
+Yes, you can add your IP address (or multiple IP addresses and IPv4/IPv6 CIDR ranges, one per line) in the plugin settings to completely bypass the approval process. Whitelisted addresses are also exempt from the login attempt lockout.
 
 = I locked myself out with the login attempt limiter. What now? =
 
@@ -86,6 +87,8 @@ Everything the original plugin stores: allowed retries, lockout duration, allowe
 == Changelog ==
 
 = 1.2.0 =
+* New: permanent blocklists for IP addresses and usernames. Blocked usernames count as failed attempts, so bots guessing "admin" get locked out.
+* New: IPv6 addresses and ranges are now supported in the allowed and blocked IP lists (previously only IPv4 ranges worked).
 * New: import settings, active lockouts, log and whitelist from Limit Login Attempts and Limit Login Attempts Reloaded.
 * New: long lockout after repeated lockouts, and a configurable window after which failed attempts are forgotten.
 * New: remaining attempts are shown on the login page.

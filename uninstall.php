@@ -35,6 +35,8 @@ $gatalyn_options = array(
 	'gatalyn_lockout_notify_telegram',
 	'gatalyn_lockout_notify_after',
 	'gatalyn_trust_proxy',
+	'gatalyn_blocked_ips',
+	'gatalyn_blocked_usernames',
 	'gatalyn_rest_api_mode',
 	'gatalyn_lockout_log',
 	'gatalyn_lockouts_total',

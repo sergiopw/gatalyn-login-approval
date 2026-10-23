@@ -216,7 +216,7 @@ class Gatalyn_LLA_Import
         foreach ($whitelist as $entry) {
             $entry = trim((string) $entry);
 
-            if (! self::is_valid_allowed_entry($entry)) {
+            if (! Gatalyn_IP::is_valid_entry($entry)) {
                 $skipped++;
                 continue;
             }
@@ -289,26 +289,5 @@ class Gatalyn_LLA_Import
         Gatalyn_Limit_Login::save_log($log);
 
         return $merged;
-    }
-
-    /**
-     * Same rules as Gatalyn_Settings::sanitize_allowed_ips(): an IP, or an
-     * IPv4 CIDR range.
-     *
-     * @param string $entry Candidate entry.
-     *
-     * @return bool
-     */
-    private static function is_valid_allowed_entry($entry)
-    {
-        if (false === strpos($entry, '/')) {
-            return (bool) filter_var($entry, FILTER_VALIDATE_IP);
-        }
-
-        $parts = explode('/', $entry, 2);
-
-        return filter_var($parts[0], FILTER_VALIDATE_IP, FILTER_FLAG_IPV4)
-            && ctype_digit($parts[1])
-            && (int) $parts[1] <= 32;
     }
 }

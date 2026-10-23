@@ -28,6 +28,8 @@
  *   gatalyn_lockout_notify_telegram (bool) Send lockout alerts to the Telegram chat.
  *   gatalyn_lockout_notify_after (int)    Notify every N lockouts of one IP (default 4).
  *   gatalyn_trust_proxy          (bool)   Read the client IP from X-Forwarded-For.
+ *   gatalyn_blocked_ips          (string) Newline-separated IPs / CIDRs refused at login (IPv4 and IPv6).
+ *   gatalyn_blocked_usernames    (string) Newline-separated usernames refused at login.
  *   gatalyn_rest_api_mode        (string) 'off', 'users', or 'all'.
  */
 
@@ -226,6 +228,26 @@ class Gatalyn_Settings
 				'type'              => 'string',
 				'sanitize_callback' => array($this, 'sanitize_rest_api_mode'),
 				'default'           => 'off',
+			)
+		);
+
+		register_setting(
+			self::OPTIONS_GROUP,
+			'gatalyn_blocked_ips',
+			array(
+				'type'              => 'string',
+				'sanitize_callback' => array($this, 'sanitize_blocked_ips'),
+				'default'           => '',
+			)
+		);
+
+		register_setting(
+			self::OPTIONS_GROUP,
+			'gatalyn_blocked_usernames',
+			array(
+				'type'              => 'string',
+				'sanitize_callback' => array($this, 'sanitize_blocked_usernames'),
+				'default'           => '',
 			)
 		);
 
@@ -778,6 +800,14 @@ class Gatalyn_Settings
 							<td><?php $this->field_lockout_notify(); ?></td>
 						</tr>
 						<tr>
+							<th scope="row"><?php esc_html_e('Blocked IP Addresses', 'gatalyn-login-approval'); ?></th>
+							<td><?php $this->field_blocked_ips(); ?></td>
+						</tr>
+						<tr>
+							<th scope="row"><?php esc_html_e('Blocked Usernames', 'gatalyn-login-approval'); ?></th>
+							<td><?php $this->field_blocked_usernames(); ?></td>
+						</tr>
+						<tr>
 							<th scope="row"><?php esc_html_e('Reverse Proxy', 'gatalyn-login-approval'); ?></th>
 							<td><?php $this->field_trust_proxy(); ?></td>
 						</tr>
@@ -1146,7 +1176,7 @@ class Gatalyn_Settings
 			cols="40"
 			class="large-text code"><?php echo esc_textarea($value); ?></textarea>
 		<p class="description">
-			<?php esc_html_e('One IP address or IPv4 CIDR range per line (e.g. 203.0.113.5 or 192.168.0.0/24). Login approval is skipped for these addresses.', 'gatalyn-login-approval'); ?>
+			<?php esc_html_e('One IPv4 or IPv6 address or CIDR range per line (e.g. 203.0.113.5, 192.168.0.0/24 or 2001:db8::/32). Login approval is skipped for these addresses.', 'gatalyn-login-approval'); ?>
 		</p>
 	<?php
 	}
@@ -1397,7 +1427,7 @@ class Gatalyn_Settings
 			<?php esc_html_e('Optional protections that work independently of the approval flow. Both are off by default because they can lock you out of your own site or disable front-end features.', 'gatalyn-login-approval'); ?>
 		</p>
 		<p>
-			<?php esc_html_e('Addresses listed under Allowed IP Addresses are never locked out.', 'gatalyn-login-approval'); ?>
+			<?php esc_html_e('Addresses listed under Allowed IP Addresses are never locked out or blocked. The blocked lists below only apply while limiting is turned on.', 'gatalyn-login-approval'); ?>
 		</p>
 	<?php
 	}
@@ -1535,6 +1565,36 @@ class Gatalyn_Settings
 		</p>
 	<?php
 	}
+	public function field_blocked_ips()
+	{
+		$value = get_option('gatalyn_blocked_ips', '');
+	?>
+		<textarea
+			name="gatalyn_blocked_ips"
+			id="gatalyn_blocked_ips"
+			rows="4"
+			cols="40"
+			class="large-text code"><?php echo esc_textarea($value); ?></textarea>
+		<p class="description">
+			<?php esc_html_e('One IPv4 or IPv6 address or CIDR range per line (e.g. 198.51.100.0/24 or 2001:db8::/32). These addresses can never log in. Allowed IP Addresses take precedence.', 'gatalyn-login-approval'); ?>
+		</p>
+	<?php
+	}
+	public function field_blocked_usernames()
+	{
+		$value = get_option('gatalyn_blocked_usernames', '');
+	?>
+		<textarea
+			name="gatalyn_blocked_usernames"
+			id="gatalyn_blocked_usernames"
+			rows="3"
+			cols="40"
+			class="large-text code"><?php echo esc_textarea($value); ?></textarea>
+		<p class="description">
+			<?php esc_html_e('One username per line, such as admin. Logins with these names are always refused and count as failed attempts, so bots that guess them get locked out. Do not list real accounts.', 'gatalyn-login-approval'); ?>
+		</p>
+	<?php
+	}
 	public function field_trust_proxy()
 	{
 		$value     = get_option('gatalyn_trust_proxy', '');
@@ -1613,6 +1673,45 @@ class Gatalyn_Settings
 		$value = absint($value);
 		return max(1, min(1440, $value));
 	}
+	public function sanitize_blocked_ips($value)
+	{
+		$clean = $this->sanitize_allowed_ips($value);
+
+		// Saving a list that contains your own address would lock you out of
+		// the very screen you are on, unless it is also on the allowed list.
+		$posted_allowed = isset($_POST['gatalyn_allowed_ips']) ? $this->sanitize_allowed_ips(wp_unslash($_POST['gatalyn_allowed_ips'])) : (string) get_option('gatalyn_allowed_ips', ''); // phpcs:ignore WordPress.Security.NonceVerification.Missing
+
+		if (
+			'' !== $clean
+			&& ! Gatalyn_IP::is_allowed(Gatalyn_IP::parse_list($posted_allowed))
+			&& Gatalyn_IP::matches(Gatalyn_IP::get_client_ip(), Gatalyn_IP::parse_list($clean))
+		) {
+			add_settings_error(
+				'gatalyn_blocked_ips',
+				'gatalyn_blocked_ips_self',
+				__('The blocked list was not saved because it contains your own IP address. Add your address to Allowed IP Addresses first.', 'gatalyn-login-approval'),
+				'error'
+			);
+
+			return (string) get_option('gatalyn_blocked_ips', '');
+		}
+
+		return $clean;
+	}
+	public function sanitize_blocked_usernames($value)
+	{
+		$names = array();
+
+		foreach (Gatalyn_IP::parse_list((string) $value) as $line) {
+			$name = sanitize_user($line);
+
+			if ('' !== $name && ! in_array(strtolower($name), array_map('strtolower', $names), true)) {
+				$names[] = $name;
+			}
+		}
+
+		return implode("\n", $names);
+	}
 	public function sanitize_retry_window_hours($value)
 	{
 		return max(1, min(168, absint($value)));
@@ -1656,22 +1755,10 @@ class Gatalyn_Settings
 	 */
 	public function sanitize_allowed_ips($value)
 	{
-		$lines     = array_filter(array_map('trim', explode("\n", (string) $value)));
-		$valid     = array();
+		$valid = array();
 
-		foreach ($lines as $line) {
-			if (strpos($line, '/') !== false) {
-				// IPv4 CIDR.
-				$parts = explode('/', $line, 2);
-				if (
-					filter_var($parts[0], FILTER_VALIDATE_IP, FILTER_FLAG_IPV4)
-					&& is_numeric($parts[1])
-					&& (int) $parts[1] >= 0
-					&& (int) $parts[1] <= 32
-				) {
-					$valid[] = $line;
-				}
-			} elseif (filter_var($line, FILTER_VALIDATE_IP)) {
+		foreach (Gatalyn_IP::parse_list((string) $value) as $line) {
+			if (Gatalyn_IP::is_valid_entry($line)) {
 				$valid[] = $line;
 			}
 		}

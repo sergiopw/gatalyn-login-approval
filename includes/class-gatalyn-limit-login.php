@@ -109,13 +109,51 @@ class Gatalyn_Limit_Login
             return $user;
         }
 
-        $remaining = self::lockout_remaining(Gatalyn_IP::get_client_ip());
-
-        if ($remaining <= 0) {
-            return $user;
+        // Permanent blocks first. A blocked address is refused with ERROR_CODE
+        // so record_failure() ignores it: there is nothing left to count.
+        if (Gatalyn_IP::is_blocked()) {
+            return new WP_Error(
+                self::ERROR_CODE,
+                __('<strong>Error:</strong> Login is not allowed from this address.', 'gatalyn-login-approval')
+            );
         }
 
-        return new WP_Error(self::ERROR_CODE, self::lockout_message($remaining));
+        $remaining = self::lockout_remaining(Gatalyn_IP::get_client_ip());
+
+        if ($remaining > 0) {
+            return new WP_Error(self::ERROR_CODE, self::lockout_message($remaining));
+        }
+
+        // A blocked username is refused whatever the password, but it does
+        // count as a failure: scanners that try "admin" earn a lockout.
+        if (self::is_blocked_username($username)) {
+            return new WP_Error(
+                'gatalyn_username_blocked',
+                __('<strong>Error:</strong> Login is not allowed for this username.', 'gatalyn-login-approval')
+            );
+        }
+
+        return $user;
+    }
+
+    /**
+     * Whether $username is on the username blocklist (case-insensitive).
+     *
+     * @param string $username Submitted username.
+     *
+     * @return bool
+     */
+    public static function is_blocked_username($username)
+    {
+        $list = Gatalyn_IP::parse_list((string) get_option('gatalyn_blocked_usernames', ''));
+
+        if (empty($list)) {
+            return false;
+        }
+
+        $username = strtolower(sanitize_user((string) $username));
+
+        return '' !== $username && in_array($username, array_map('strtolower', $list), true);
     }
 
     /**

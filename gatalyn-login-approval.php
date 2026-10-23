@@ -71,6 +71,8 @@ function gatalyn_activate_plugin()
     add_option('gatalyn_lockout_notify_telegram', '');
     add_option('gatalyn_lockout_notify_after', 4);
     add_option('gatalyn_trust_proxy', '');
+    add_option('gatalyn_blocked_ips', '');
+    add_option('gatalyn_blocked_usernames', '');
     add_option('gatalyn_rest_api_mode', 'off');
 
     if (! wp_next_scheduled('gatalyn_daily_garbage_collection')) {

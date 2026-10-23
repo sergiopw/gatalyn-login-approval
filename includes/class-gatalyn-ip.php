@@ -90,22 +90,77 @@ class Gatalyn_IP
     public static function is_allowed($allowed_ips = null)
     {
         if (null === $allowed_ips) {
-            $raw         = (string) get_option('gatalyn_allowed_ips', '');
-            $allowed_ips = array_filter(array_map('trim', explode("\n", $raw)));
+            $allowed_ips = self::parse_list((string) get_option('gatalyn_allowed_ips', ''));
         }
 
-        if (empty($allowed_ips)) {
+        return self::matches(self::get_client_ip(), $allowed_ips);
+    }
+
+    /**
+     * Returns true if the current request's IP is in the permanent blocklist.
+     *
+     * @return bool
+     */
+    public static function is_blocked()
+    {
+        return self::matches(
+            self::get_client_ip(),
+            self::parse_list((string) get_option('gatalyn_blocked_ips', ''))
+        );
+    }
+
+    /**
+     * Splits a one-entry-per-line option value into a clean list.
+     *
+     * @param string $raw Option value.
+     *
+     * @return array
+     */
+    public static function parse_list($raw)
+    {
+        return array_values(array_filter(array_map('trim', explode("\n", $raw))));
+    }
+
+    /**
+     * Whether $entry is an IPv4/IPv6 address or a CIDR range of either family.
+     *
+     * @param string $entry List entry.
+     *
+     * @return bool
+     */
+    public static function is_valid_entry($entry)
+    {
+        if (false === strpos($entry, '/')) {
+            return (bool) filter_var($entry, FILTER_VALIDATE_IP);
+        }
+
+        $parts = explode('/', $entry, 2);
+
+        if (! filter_var($parts[0], FILTER_VALIDATE_IP) || ! ctype_digit($parts[1])) {
             return false;
         }
 
-        $client_ip = self::get_client_ip();
+        $max = false === strpos($parts[0], ':') ? 32 : 128;
 
-        foreach ($allowed_ips as $allowed) {
-            if (strpos($allowed, '/') !== false) {
-                if (self::ip_in_cidr($client_ip, $allowed)) {
+        return (int) $parts[1] <= $max;
+    }
+
+    /**
+     * Whether $ip equals, or falls inside, any entry of $list.
+     *
+     * @param string $ip   Client IP.
+     * @param array  $list Addresses and CIDR ranges.
+     *
+     * @return bool
+     */
+    public static function matches($ip, array $list)
+    {
+        foreach ($list as $entry) {
+            if (false !== strpos($entry, '/')) {
+                if (self::ip_in_cidr($ip, $entry)) {
                     return true;
                 }
-            } elseif ($allowed === $client_ip) {
+            } elseif (self::same_address($entry, $ip)) {
                 return true;
             }
         }
@@ -114,9 +169,25 @@ class Gatalyn_IP
     }
 
     /**
-     * Checks whether $ip falls within the IPv4 CIDR range $cidr.
+     * Compares two addresses by value, so "::1" equals "0:0:0:0:0:0:0:1".
      *
-     * @param string $ip   IPv4 address.
+     * @param string $a First address.
+     * @param string $b Second address.
+     *
+     * @return bool
+     */
+    private static function same_address($a, $b)
+    {
+        $bin_a = @inet_pton($a);
+        $bin_b = @inet_pton($b);
+
+        return false !== $bin_a && $bin_a === $bin_b;
+    }
+
+    /**
+     * Checks whether $ip falls within the CIDR range $cidr (IPv4 or IPv6).
+     *
+     * @param string $ip   Client address.
      * @param string $cidr CIDR notation.
      *
      * @return bool
@@ -124,26 +195,38 @@ class Gatalyn_IP
     private static function ip_in_cidr($ip, $cidr)
     {
         $parts = explode('/', $cidr, 2);
-        if (2 !== count($parts)) {
+        if (2 !== count($parts) || ! ctype_digit($parts[1])) {
             return false;
         }
 
-        $subnet = $parts[0];
+        $subnet = @inet_pton($parts[0]);
+        $addr   = @inet_pton($ip);
+
+        // Different families (or garbage) never match.
+        if (false === $subnet || false === $addr || strlen($subnet) !== strlen($addr)) {
+            return false;
+        }
+
         $prefix = (int) $parts[1];
 
-        if ($prefix < 0 || $prefix > 32) {
+        if ($prefix > strlen($subnet) * 8) {
             return false;
         }
 
-        $ip_long     = ip2long($ip);
-        $subnet_long = ip2long($subnet);
+        $full = intdiv($prefix, 8);
 
-        if (false === $ip_long || false === $subnet_long) {
+        if (0 !== strncmp($subnet, $addr, $full)) {
             return false;
         }
 
-        $mask = $prefix > 0 ? (~0 << (32 - $prefix)) : 0;
+        $rest = $prefix % 8;
 
-        return ($ip_long & $mask) === ($subnet_long & $mask);
+        if (0 === $rest) {
+            return true;
+        }
+
+        $mask = (0xFF << (8 - $rest)) & 0xFF;
+
+        return (ord($subnet[$full]) & $mask) === (ord($addr[$full]) & $mask);
     }
 }

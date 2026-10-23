@@ -29,18 +29,55 @@ class Gatalyn_IP
             ? sanitize_text_field(wp_unslash($_SERVER['REMOTE_ADDR']))
             : '';
 
-        if (defined('GATALYN_TRUST_PROXY') && GATALYN_TRUST_PROXY) {
-            $forwarded = isset($_SERVER['HTTP_X_FORWARDED_FOR'])
-                ? sanitize_text_field(wp_unslash($_SERVER['HTTP_X_FORWARDED_FOR']))
-                : '';
+        if (self::trust_proxy()) {
+            $forwarded = self::forwarded_ip();
 
-            if (! empty($forwarded)) {
-                $parts = explode(',', $forwarded);
-                $ip    = trim($parts[0]);
+            if ('' !== $forwarded) {
+                $ip = $forwarded;
             }
         }
 
         return $ip;
+    }
+
+    /**
+     * Whether X-Forwarded-For should be trusted for the client IP.
+     *
+     * The GATALYN_TRUST_PROXY constant wins when defined, so a host that pins it
+     * in wp-config.php can't be overridden from the settings screen. Otherwise
+     * the 'gatalyn_trust_proxy' option decides, which is also what the Limit
+     * Login Attempts importer sets from that plugin's "behind a proxy" choice.
+     *
+     * @return bool
+     */
+    public static function trust_proxy()
+    {
+        if (defined('GATALYN_TRUST_PROXY')) {
+            return (bool) GATALYN_TRUST_PROXY;
+        }
+
+        return '1' === (string) get_option('gatalyn_trust_proxy', '');
+    }
+
+    /**
+     * Returns the first address in X-Forwarded-For, or '' when there is none.
+     * Used by the settings screen to help the admin pick the proxy setting.
+     *
+     * @return string
+     */
+    public static function forwarded_ip()
+    {
+        $forwarded = isset($_SERVER['HTTP_X_FORWARDED_FOR'])
+            ? sanitize_text_field(wp_unslash($_SERVER['HTTP_X_FORWARDED_FOR']))
+            : '';
+
+        if ('' === $forwarded) {
+            return '';
+        }
+
+        $parts = explode(',', $forwarded);
+
+        return trim($parts[0]);
     }
 
     /**

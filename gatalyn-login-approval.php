@@ -3,8 +3,8 @@
 /**
  * Plugin Name: Gatalyn Login Approval
  * Plugin URI:  https://github.com/sergiopw/gatalyn-login-approval
- * Description: Login approval by email or Telegram, failed-attempt lockout, and REST API restrictions.
- * Version:     1.1.0
+ * Description: Login approval by email or Telegram, Limit Login Attempts-style lockouts (with settings import), and REST API restrictions.
+ * Version:     1.2.0
  * Requires at least: 5.6
  * Tested up to: 7.0
  * Requires PHP: 7.4
@@ -19,7 +19,7 @@ if (! defined('ABSPATH')) {
 }
 
 if (! defined('GATALYN_VERSION')) {
-    define('GATALYN_VERSION', '1.1.0');
+    define('GATALYN_VERSION', '1.2.0');
 }
 
 if (! defined('GATALYN_PLUGIN_FILE')) {
@@ -38,6 +38,7 @@ require_once GATALYN_PLUGIN_DIR . 'includes/class-gatalyn-telegram.php';
 require_once GATALYN_PLUGIN_DIR . 'includes/class-gatalyn-settings.php';
 require_once GATALYN_PLUGIN_DIR . 'includes/class-gatalyn-login.php';
 require_once GATALYN_PLUGIN_DIR . 'includes/class-gatalyn-limit-login.php';
+require_once GATALYN_PLUGIN_DIR . 'includes/class-gatalyn-lla-import.php';
 require_once GATALYN_PLUGIN_DIR . 'includes/class-gatalyn-rest-api.php';
 
 /**
@@ -62,6 +63,14 @@ function gatalyn_activate_plugin()
     add_option('gatalyn_limit_attempts_enabled', '');
     add_option('gatalyn_max_attempts', 5);
     add_option('gatalyn_lockout_minutes', 15);
+    add_option('gatalyn_retry_window_hours', 12);
+    add_option('gatalyn_long_lockout_after', 4);
+    add_option('gatalyn_long_lockout_hours', 24);
+    add_option('gatalyn_show_remaining', '1');
+    add_option('gatalyn_lockout_notify_email', '');
+    add_option('gatalyn_lockout_notify_telegram', '');
+    add_option('gatalyn_lockout_notify_after', 4);
+    add_option('gatalyn_trust_proxy', '');
     add_option('gatalyn_rest_api_mode', 'off');
 
     if (! wp_next_scheduled('gatalyn_daily_garbage_collection')) {

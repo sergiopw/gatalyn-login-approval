@@ -1,14 +1,14 @@
 === Gatalyn Login Approval ===
 Contributors: sergiopw
-Tags: login, security, 2fa, authentication, telegram
+Tags: login, security, limit login attempts, brute force, telegram
 Requires at least: 5.6
 Tested up to: 7.0
-Stable tag: 1.1.0
+Stable tag: 1.2.0
 Requires PHP: 7.4
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
 
-Login approval by email or Telegram, failed-attempt lockout, and REST API restrictions.
+Login approval by email or Telegram, plus a drop-in replacement for Limit Login Attempts that imports its settings.
 
 == Description ==
 
@@ -27,7 +27,23 @@ Features include:
 Two optional hardening features are also included. Both are disabled by default:
 
 *   **Limit Login Attempts:** Temporarily blocks an IP address after a configurable number of failed logins. Blocked attempts are rejected before the approval step, so you are not notified for every attempt an attacker makes while their address is locked out. Whitelisted addresses are never blocked.
+    *   Long lockout for addresses that keep coming back (for example 24 hours after 4 lockouts).
+    *   Failed attempts are forgotten after a configurable quiet period.
+    *   Shows how many attempts are left on the login page.
+    *   Lockout log with the usernames tried, and one-click unlock.
+    *   Lockout alerts by email and/or Telegram.
+    *   Reverse proxy / CDN setting, with a hint about which one your site needs.
 *   **REST API Restrictions:** Either hides `/wp-json/wp/v2/users` from visitors, which stops username enumeration and affects nothing else, or requires authentication for the whole REST API.
+
+= Switching from Limit Login Attempts =
+
+The original Limit Login Attempts plugin has not been updated in years. Gatalyn Login Approval uses the same counting model, so your settings keep their meaning:
+
+1. Install and activate Gatalyn Login Approval. Keep Limit Login Attempts active for now.
+2. Go to **Settings > Login Approval > Lockouts** and click **Import Settings**.
+3. Check the **Security** tab, then deactivate Limit Login Attempts.
+
+The import copies the retry limit, lockout and long-lockout durations, the retry window, the reverse proxy setting, email alerts, lockouts that are still running, the lockout log and total, and (from Limit Login Attempts Reloaded) the IP whitelist. It only reads the other plugin's data and never changes it.
 
 == Installation ==
 
@@ -57,13 +73,26 @@ Yes, you can add your IP address (or multiple IP addresses, one per line) in the
 
 = I locked myself out with the login attempt limiter. What now? =
 
-Wait for the lockout to expire (15 minutes by default). If you cannot wait, delete the `gatalyn_limit_attempts_enabled` option from the database, or rename the plugin folder over FTP to deactivate it.
+Wait for the lockout to expire (15 minutes by default). If you cannot wait, another administrator can unlock your address under **Settings > Login Approval > Lockouts**, or you can delete the `gatalyn_limit_attempts_enabled` option from the database, or rename the plugin folder over FTP to deactivate it.
+
+= Which Limit Login Attempts settings can be imported? =
+
+Everything the original plugin stores: allowed retries, lockout duration, allowed lockouts and long lockout duration, the retry reset time, the proxy setting, email notification and its threshold, active lockouts, the log and the lockout total. From Limit Login Attempts Reloaded the IP whitelist is also imported, except ranges written as "start-end", which must be re-entered as CIDR. Reloaded's denylists and cloud features are not imported.
 
 = Will restricting the REST API break my site? =
 
 "Hide the users endpoint" will not: it only removes the route that lists your usernames. "Require login for the whole REST API" can, because plugins and themes often call the API from the front end without a session, for example contact forms, AJAX search, store endpoints, or page builders. Only oEmbed stays public so that existing embeds of your site elsewhere keep working. Test your front end after enabling it.
 
 == Changelog ==
+
+= 1.2.0 =
+* New: import settings, active lockouts, log and whitelist from Limit Login Attempts and Limit Login Attempts Reloaded.
+* New: long lockout after repeated lockouts, and a configurable window after which failed attempts are forgotten.
+* New: remaining attempts are shown on the login page.
+* New: Lockouts tab with the lockout log, usernames tried, total count and an Unlock button.
+* New: lockout alerts by email and Telegram.
+* New: reverse proxy setting on the settings screen. The GATALYN_TRUST_PROXY constant still takes precedence when defined.
+* Fix: the Security Hardening settings added in 1.1.0 were not shown on the settings page, and saving the page reset them (attempt limiting off, 1 allowed attempt, 1-minute lockout). They now have their own Security tab.
 
 = 1.1.0 =
 * New: optional login attempt limiting, blocking an IP address for a configurable time after repeated failures. Blocked attempts are rejected before the approval flow runs, so no approval email or Telegram message is sent for them.

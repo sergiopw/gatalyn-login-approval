@@ -20,6 +20,14 @@
  *   gatalyn_limit_attempts_enabled (bool)   Lock out an IP after repeated login failures.
  *   gatalyn_max_attempts         (int)    Failed attempts allowed before locking out (default 5).
  *   gatalyn_lockout_minutes      (int)    Lockout duration in minutes (default 15).
+ *   gatalyn_retry_window_hours   (int)    Hours failed attempts are remembered (default 12).
+ *   gatalyn_long_lockout_after   (int)    Lockouts within the window before a long lockout; 0 = never (default 4).
+ *   gatalyn_long_lockout_hours   (int)    Long lockout duration in hours (default 24).
+ *   gatalyn_show_remaining       (bool)   Show remaining attempts on the login page (default true).
+ *   gatalyn_lockout_notify_email (bool)   Email the admin about lockouts.
+ *   gatalyn_lockout_notify_telegram (bool) Send lockout alerts to the Telegram chat.
+ *   gatalyn_lockout_notify_after (int)    Notify every N lockouts of one IP (default 4).
+ *   gatalyn_trust_proxy          (bool)   Read the client IP from X-Forwarded-For.
  *   gatalyn_rest_api_mode        (string) 'off', 'users', or 'all'.
  */
 
@@ -43,6 +51,10 @@ class Gatalyn_Settings
 		add_action('admin_enqueue_scripts', array($this, 'enqueue_admin_scripts'));
 		add_action('wp_ajax_gatalyn_telegram_test', array($this, 'ajax_telegram_test'));
 		add_action('wp_ajax_gatalyn_telegram_detect_chat_id', array($this, 'ajax_telegram_detect_chat_id'));
+		add_action('admin_post_gatalyn_lla_import', array($this, 'handle_lla_import'));
+		add_action('admin_post_gatalyn_unlock_ip', array($this, 'handle_unlock_ip'));
+		add_action('admin_post_gatalyn_clear_log', array($this, 'handle_clear_log'));
+		add_action('admin_notices', array($this, 'admin_notices'));
 	}
 
 	/**
@@ -214,6 +226,86 @@ class Gatalyn_Settings
 				'type'              => 'string',
 				'sanitize_callback' => array($this, 'sanitize_rest_api_mode'),
 				'default'           => 'off',
+			)
+		);
+
+		register_setting(
+			self::OPTIONS_GROUP,
+			'gatalyn_retry_window_hours',
+			array(
+				'type'              => 'integer',
+				'sanitize_callback' => array($this, 'sanitize_retry_window_hours'),
+				'default'           => 12,
+			)
+		);
+
+		register_setting(
+			self::OPTIONS_GROUP,
+			'gatalyn_long_lockout_after',
+			array(
+				'type'              => 'integer',
+				'sanitize_callback' => array($this, 'sanitize_long_lockout_after'),
+				'default'           => 4,
+			)
+		);
+
+		register_setting(
+			self::OPTIONS_GROUP,
+			'gatalyn_long_lockout_hours',
+			array(
+				'type'              => 'integer',
+				'sanitize_callback' => array($this, 'sanitize_long_lockout_hours'),
+				'default'           => 24,
+			)
+		);
+
+		register_setting(
+			self::OPTIONS_GROUP,
+			'gatalyn_show_remaining',
+			array(
+				'type'              => 'boolean',
+				'sanitize_callback' => array($this, 'sanitize_checkbox'),
+				'default'           => true,
+			)
+		);
+
+		register_setting(
+			self::OPTIONS_GROUP,
+			'gatalyn_lockout_notify_email',
+			array(
+				'type'              => 'boolean',
+				'sanitize_callback' => array($this, 'sanitize_checkbox'),
+				'default'           => false,
+			)
+		);
+
+		register_setting(
+			self::OPTIONS_GROUP,
+			'gatalyn_lockout_notify_telegram',
+			array(
+				'type'              => 'boolean',
+				'sanitize_callback' => array($this, 'sanitize_checkbox'),
+				'default'           => false,
+			)
+		);
+
+		register_setting(
+			self::OPTIONS_GROUP,
+			'gatalyn_lockout_notify_after',
+			array(
+				'type'              => 'integer',
+				'sanitize_callback' => array($this, 'sanitize_lockout_notify_after'),
+				'default'           => 4,
+			)
+		);
+
+		register_setting(
+			self::OPTIONS_GROUP,
+			'gatalyn_trust_proxy',
+			array(
+				'type'              => 'boolean',
+				'sanitize_callback' => array($this, 'sanitize_checkbox'),
+				'default'           => false,
 			)
 		);
 
@@ -411,14 +503,15 @@ class Gatalyn_Settings
 			'$("#gatalyn-tab-"+id).show();' .
 			'$(".gatalyn-tab-link").removeClass("nav-tab-active");' .
 			'$(".gatalyn-tab-link[data-tab="+id+"]").addClass("nav-tab-active");' .
+			'$("#gatalyn-save").toggle(id!=="lockouts");' .
 			'try{sessionStorage.setItem(SK,id);}catch(e){}' .
 			'}' .
 			'$(document).on("click",".gatalyn-tab-link",function(e){' .
 			'e.preventDefault();activateTab($(this).data("tab"));' .
 			'});' .
 			'$(function(){' .
-			'var saved;try{saved=sessionStorage.getItem(SK);}catch(e){}' .
-			'activateTab(saved||($("#gatalyn-tabs .gatalyn-tab-link").first().data("tab")));' .
+			'var saved,m=/[?&]gatalyn_tab=([a-z]+)/.exec(location.search);try{saved=sessionStorage.getItem(SK);}catch(e){}' .
+			'activateTab((m&&$("#gatalyn-tab-"+m[1]).length&&m[1])||saved||($("#gatalyn-tabs .gatalyn-tab-link").first().data("tab")));' .
 			'});' .
 			// ---- Test button ------------------------------------------------
 			'$(document).on("click","#gatalyn-telegram-test-btn",function(e){' .
@@ -468,6 +561,7 @@ class Gatalyn_Settings
 			'#gatalyn-tabs{margin-bottom:0;}'
 			. '.gatalyn-tab-content{display:none;border:1px solid #c3c4c7;border-top:none;padding:16px 20px 10px;background:#fff;}'
 			. '.gatalyn-tab-content table{margin-top:0;}'
+			. '.gatalyn-import-box{border-left:4px solid #2271b1;background:#f0f6fc;padding:4px 16px 12px;margin-bottom:16px;}'
 			/* Telegram result spans */
 			. '#gatalyn-telegram-test-result,#gatalyn-telegram-detect-result{display:inline-block;margin-left:10px;font-weight:600;}'
 			. '#gatalyn-telegram-test-result.gatalyn-ok,#gatalyn-telegram-detect-result.gatalyn-ok{color:#00a32a;}'
@@ -575,6 +669,12 @@ class Gatalyn_Settings
 					<a href="#" class="nav-tab gatalyn-tab-link" data-tab="telegram">
 						<?php esc_html_e('Telegram', 'gatalyn-login-approval'); ?>
 					</a>
+					<a href="#" class="nav-tab gatalyn-tab-link" data-tab="security">
+						<?php esc_html_e('Security', 'gatalyn-login-approval'); ?>
+					</a>
+					<a href="#" class="nav-tab gatalyn-tab-link" data-tab="lockouts">
+						<?php esc_html_e('Lockouts', 'gatalyn-login-approval'); ?>
+					</a>
 				</nav>
 
 				<!-- General tab -->
@@ -645,10 +745,341 @@ class Gatalyn_Settings
 					</table>
 				</div>
 
-				<?php submit_button(); ?>
+				<!-- Security tab -->
+				<div id="gatalyn-tab-security" class="gatalyn-tab-content">
+					<?php $this->hardening_section_description(); ?>
+					<table class="form-table" role="presentation">
+						<tr>
+							<th scope="row"><?php esc_html_e('Limit Login Attempts', 'gatalyn-login-approval'); ?></th>
+							<td><?php $this->field_limit_attempts_enabled(); ?></td>
+						</tr>
+						<tr>
+							<th scope="row"><?php esc_html_e('Allowed Failed Attempts', 'gatalyn-login-approval'); ?></th>
+							<td><?php $this->field_max_attempts(); ?></td>
+						</tr>
+						<tr>
+							<th scope="row"><?php esc_html_e('Lockout Duration', 'gatalyn-login-approval'); ?></th>
+							<td><?php $this->field_lockout_minutes(); ?></td>
+						</tr>
+						<tr>
+							<th scope="row"><?php esc_html_e('Long Lockout', 'gatalyn-login-approval'); ?></th>
+							<td><?php $this->field_long_lockout(); ?></td>
+						</tr>
+						<tr>
+							<th scope="row"><?php esc_html_e('Forget Failures After', 'gatalyn-login-approval'); ?></th>
+							<td><?php $this->field_retry_window_hours(); ?></td>
+						</tr>
+						<tr>
+							<th scope="row"><?php esc_html_e('Login Page Notice', 'gatalyn-login-approval'); ?></th>
+							<td><?php $this->field_show_remaining(); ?></td>
+						</tr>
+						<tr>
+							<th scope="row"><?php esc_html_e('Lockout Alerts', 'gatalyn-login-approval'); ?></th>
+							<td><?php $this->field_lockout_notify(); ?></td>
+						</tr>
+						<tr>
+							<th scope="row"><?php esc_html_e('Reverse Proxy', 'gatalyn-login-approval'); ?></th>
+							<td><?php $this->field_trust_proxy(); ?></td>
+						</tr>
+						<tr>
+							<th scope="row"><?php esc_html_e('REST API Access', 'gatalyn-login-approval'); ?></th>
+							<td><?php $this->field_rest_api_mode(); ?></td>
+						</tr>
+					</table>
+				</div>
+
+				<div id="gatalyn-save"><?php submit_button(); ?></div>
+			</form>
+
+			<?php
+			// Outside the settings form: its buttons post their own forms to
+			// admin-post.php, and HTML does not allow nested forms.
+			$this->render_lockouts_tab();
+			?>
+		</div>
+	<?php
+	}
+
+	/**
+	 * Renders the Lockouts tab: the lockout log, unlock buttons, and the
+	 * Limit Login Attempts importer.
+	 */
+	private function render_lockouts_tab()
+	{
+		$log = array_reverse(Gatalyn_Limit_Login::get_log(), true);
+	?>
+		<div id="gatalyn-tab-lockouts" class="gatalyn-tab-content">
+			<?php $this->render_lla_import_box(); ?>
+
+			<h2><?php esc_html_e('Lockout Log', 'gatalyn-login-approval'); ?></h2>
+			<p>
+				<?php
+				echo esc_html(
+					sprintf(
+						/* translators: %d: total number of lockouts. */
+						_n('%d lockout in total.', '%d lockouts in total.', Gatalyn_Limit_Login::total_lockouts(), 'gatalyn-login-approval'),
+						Gatalyn_Limit_Login::total_lockouts()
+					)
+				);
+				?>
+			</p>
+
+			<?php if (empty($log)) : ?>
+				<p><em><?php esc_html_e('No lockouts recorded yet.', 'gatalyn-login-approval'); ?></em></p>
+			<?php else : ?>
+				<table class="widefat striped">
+					<thead>
+						<tr>
+							<th><?php esc_html_e('IP Address', 'gatalyn-login-approval'); ?></th>
+							<th><?php esc_html_e('Usernames Tried', 'gatalyn-login-approval'); ?></th>
+							<th><?php esc_html_e('Lockouts', 'gatalyn-login-approval'); ?></th>
+							<th><?php esc_html_e('Last Lockout', 'gatalyn-login-approval'); ?></th>
+							<th><?php esc_html_e('Status', 'gatalyn-login-approval'); ?></th>
+						</tr>
+					</thead>
+					<tbody>
+						<?php foreach ($log as $ip => $entry) : ?>
+							<?php
+							$ip        = (string) $ip;
+							$remaining = Gatalyn_Limit_Login::lockout_remaining($ip);
+							$users     = array();
+							foreach ((array) $entry['users'] as $username => $count) {
+								$users[] = $username . ' (' . (int) $count . ')';
+							}
+							?>
+							<tr>
+								<td><code><?php echo esc_html($ip); ?></code></td>
+								<td><?php echo esc_html(implode(', ', $users)); ?></td>
+								<td><?php echo esc_html((string) (int) $entry['lockouts']); ?></td>
+								<td>
+									<?php
+									echo (int) $entry['last'] > 0
+										? esc_html(wp_date(get_option('date_format') . ' ' . get_option('time_format'), (int) $entry['last']))
+										: '&mdash;';
+									?>
+								</td>
+								<td>
+									<?php if ($remaining > 0) : ?>
+										<form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>">
+											<?php
+											echo esc_html(
+												sprintf(
+													/* translators: %d: minutes left in the lockout. */
+													_n('Locked for %d more minute', 'Locked for %d more minutes', (int) ceil($remaining / MINUTE_IN_SECONDS), 'gatalyn-login-approval'),
+													(int) ceil($remaining / MINUTE_IN_SECONDS)
+												)
+											);
+											?>
+											<input type="hidden" name="action" value="gatalyn_unlock_ip" />
+											<input type="hidden" name="ip" value="<?php echo esc_attr($ip); ?>" />
+											<?php wp_nonce_field('gatalyn_unlock_ip'); ?>
+											<button type="submit" class="button button-small"><?php esc_html_e('Unlock', 'gatalyn-login-approval'); ?></button>
+										</form>
+									<?php else : ?>
+										<?php esc_html_e('Not locked', 'gatalyn-login-approval'); ?>
+									<?php endif; ?>
+								</td>
+							</tr>
+						<?php endforeach; ?>
+					</tbody>
+				</table>
+
+				<form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" style="margin-top:12px;">
+					<input type="hidden" name="action" value="gatalyn_clear_log" />
+					<?php wp_nonce_field('gatalyn_clear_log'); ?>
+					<?php submit_button(__('Clear Log', 'gatalyn-login-approval'), 'secondary', 'submit', false); ?>
+					<span class="description"><?php esc_html_e('Active lockouts stay in place; use Unlock to lift one.', 'gatalyn-login-approval'); ?></span>
+				</form>
+			<?php endif; ?>
+		</div>
+	<?php
+	}
+
+	/**
+	 * Renders the "Import from Limit Login Attempts" box when its data exists.
+	 */
+	private function render_lla_import_box()
+	{
+		if (! Gatalyn_LLA_Import::detected()) {
+			return;
+		}
+
+		$imported_at = Gatalyn_LLA_Import::imported_at();
+	?>
+		<div class="gatalyn-import-box">
+			<h2><?php esc_html_e('Import from Limit Login Attempts', 'gatalyn-login-approval'); ?></h2>
+			<p>
+				<?php esc_html_e('Settings from Limit Login Attempts (or Limit Login Attempts Reloaded) were found. The import copies the retry limits, lockout durations, proxy setting, email alerts, active lockouts, IP whitelist and lockout log, and turns on login attempt limiting here. The other plugin\'s data is left untouched.', 'gatalyn-login-approval'); ?>
+			</p>
+			<?php if ($imported_at > 0) : ?>
+				<p>
+					<strong>
+						<?php
+						echo esc_html(
+							sprintf(
+								/* translators: %s: date and time of the import. */
+								__('Imported on %s.', 'gatalyn-login-approval'),
+								wp_date(get_option('date_format') . ' ' . get_option('time_format'), $imported_at)
+							)
+						);
+						?>
+					</strong>
+					<?php esc_html_e('Deactivate Limit Login Attempts so attempts are not counted twice. Importing again refreshes the settings and lockouts; the log is only merged once.', 'gatalyn-login-approval'); ?>
+				</p>
+			<?php endif; ?>
+			<form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>">
+				<input type="hidden" name="action" value="gatalyn_lla_import" />
+				<?php wp_nonce_field('gatalyn_lla_import'); ?>
+				<?php
+				submit_button(
+					$imported_at > 0 ? __('Import Again', 'gatalyn-login-approval') : __('Import Settings', 'gatalyn-login-approval'),
+					$imported_at > 0 ? 'secondary' : 'primary',
+					'submit',
+					false
+				);
+				?>
 			</form>
 		</div>
 	<?php
+	}
+
+	// -------------------------------------------------------------------------
+	// admin-post handlers & notices
+	// -------------------------------------------------------------------------
+
+	/** Runs the Limit Login Attempts import. */
+	public function handle_lla_import()
+	{
+		$this->verify_admin_post('gatalyn_lla_import');
+
+		$summary = Gatalyn_LLA_Import::run();
+
+		set_transient('gatalyn_import_summary_' . get_current_user_id(), $summary, MINUTE_IN_SECONDS * 5);
+
+		$this->redirect_to_tab('lockouts', 'imported');
+	}
+
+	/** Lifts the lockout of one IP. */
+	public function handle_unlock_ip()
+	{
+		$this->verify_admin_post('gatalyn_unlock_ip');
+
+		$ip = isset($_POST['ip']) ? sanitize_text_field(wp_unslash($_POST['ip'])) : '';
+
+		if (filter_var($ip, FILTER_VALIDATE_IP)) {
+			Gatalyn_Limit_Login::unlock($ip);
+		}
+
+		$this->redirect_to_tab('lockouts', 'unlocked');
+	}
+
+	/** Empties the lockout log. */
+	public function handle_clear_log()
+	{
+		$this->verify_admin_post('gatalyn_clear_log');
+
+		Gatalyn_Limit_Login::clear_log();
+
+		$this->redirect_to_tab('lockouts', 'cleared');
+	}
+
+	/**
+	 * Shows the result of an admin-post action on our page, and offers the
+	 * Limit Login Attempts import on the Plugins screen.
+	 */
+	public function admin_notices()
+	{
+		if (! current_user_can('manage_options')) {
+			return;
+		}
+
+		$screen = function_exists('get_current_screen') ? get_current_screen() : null;
+		$screen = $screen ? $screen->id : '';
+
+		if ('plugins' === $screen && Gatalyn_LLA_Import::detected() && 0 === Gatalyn_LLA_Import::imported_at()) {
+			printf(
+				'<div class="notice notice-info"><p>%s <a href="%s">%s</a></p></div>',
+				esc_html__('Gatalyn Login Approval can import your Limit Login Attempts settings and lockouts.', 'gatalyn-login-approval'),
+				esc_url(admin_url('options-general.php?page=' . self::MENU_SLUG . '&gatalyn_tab=lockouts')),
+				esc_html__('Review the import', 'gatalyn-login-approval')
+			);
+		}
+
+		if ('settings_page_' . self::MENU_SLUG !== $screen || ! isset($_GET['gatalyn_msg'])) { // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+			return;
+		}
+
+		$msg = sanitize_key(wp_unslash($_GET['gatalyn_msg'])); // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+
+		if ('imported' === $msg) {
+			$key     = 'gatalyn_import_summary_' . get_current_user_id();
+			$summary = get_transient($key);
+			delete_transient($key);
+
+			if (! is_array($summary)) {
+				return;
+			}
+
+			$text = sprintf(
+				/* translators: 1: settings imported, 2: active lockouts, 3: whitelisted IPs added, 4: log entries merged. */
+				__('Import finished: %1$d settings, %2$d active lockouts, %3$d whitelisted IPs, %4$d log entries.', 'gatalyn-login-approval'),
+				(int) $summary['settings'],
+				(int) $summary['lockouts'],
+				(int) $summary['allowed_ips'],
+				(int) $summary['log_entries']
+			);
+
+			if ((int) $summary['skipped_ips'] > 0) {
+				$text .= ' ' . sprintf(
+					/* translators: %d: whitelist entries that could not be imported. */
+					_n('%d whitelist entry was skipped because its format is not supported.', '%d whitelist entries were skipped because their format is not supported.', (int) $summary['skipped_ips'], 'gatalyn-login-approval'),
+					(int) $summary['skipped_ips']
+				);
+			}
+		} elseif ('unlocked' === $msg) {
+			$text = __('The address was unlocked.', 'gatalyn-login-approval');
+		} elseif ('cleared' === $msg) {
+			$text = __('The lockout log was cleared.', 'gatalyn-login-approval');
+		} else {
+			return;
+		}
+
+		printf('<div class="notice notice-success is-dismissible"><p>%s</p></div>', esc_html($text));
+	}
+
+	/**
+	 * Dies unless the request is a valid admin-post submission by an admin.
+	 *
+	 * @param string $action Nonce action.
+	 */
+	private function verify_admin_post($action)
+	{
+		if (! current_user_can('manage_options')) {
+			wp_die(esc_html__('You do not have permission to do this.', 'gatalyn-login-approval'), 403);
+		}
+
+		check_admin_referer($action);
+	}
+
+	/**
+	 * Redirects back to a tab of the settings page and exits.
+	 *
+	 * @param string $tab Tab id.
+	 * @param string $msg Notice key.
+	 */
+	private function redirect_to_tab($tab, $msg)
+	{
+		wp_safe_redirect(
+			add_query_arg(
+				array(
+					'page'        => self::MENU_SLUG,
+					'gatalyn_tab' => $tab,
+					'gatalyn_msg' => $msg,
+				),
+				admin_url('options-general.php')
+			)
+		);
+		exit;
 	}
 
 	// -------------------------------------------------------------------------
@@ -1026,6 +1457,124 @@ class Gatalyn_Settings
 		</p>
 	<?php
 	}
+	public function field_long_lockout()
+	{
+		$after = (int) get_option('gatalyn_long_lockout_after', 4);
+		$hours = (int) get_option('gatalyn_long_lockout_hours', 24);
+	?>
+		<?php
+		printf(
+			/* translators: 1: number input for lockouts, 2: number input for hours. */
+			esc_html__('After %1$s lockouts, block the address for %2$s hours', 'gatalyn-login-approval'),
+			'<input type="number" name="gatalyn_long_lockout_after" id="gatalyn_long_lockout_after" value="' . esc_attr($after) . '" min="0" max="100" step="1" class="small-text" />',
+			'<input type="number" name="gatalyn_long_lockout_hours" id="gatalyn_long_lockout_hours" value="' . esc_attr($hours) . '" min="1" max="720" step="1" class="small-text" />'
+		);
+		?>
+		<p class="description">
+			<?php esc_html_e('An address that keeps getting locked out gets one long lockout instead of another short one. Set lockouts to 0 to turn this off.', 'gatalyn-login-approval'); ?>
+		</p>
+	<?php
+	}
+	public function field_retry_window_hours()
+	{
+		$value = (int) get_option('gatalyn_retry_window_hours', 12);
+	?>
+		<input
+			type="number"
+			name="gatalyn_retry_window_hours"
+			id="gatalyn_retry_window_hours"
+			value="<?php echo esc_attr($value); ?>"
+			min="1"
+			max="168"
+			step="1"
+			class="small-text" />
+		<?php esc_html_e('hours', 'gatalyn-login-approval'); ?>
+		<p class="description">
+			<?php esc_html_e('Failed attempts and lockouts are forgotten once an address has been quiet this long (1–168 hours).', 'gatalyn-login-approval'); ?>
+		</p>
+	<?php
+	}
+	public function field_show_remaining()
+	{
+		$value = get_option('gatalyn_show_remaining', '1');
+	?>
+		<label>
+			<input
+				type="checkbox"
+				name="gatalyn_show_remaining"
+				id="gatalyn_show_remaining"
+				value="1"
+				<?php checked('1', $value); ?> />
+			<?php esc_html_e('Show how many attempts are left after a failed login', 'gatalyn-login-approval'); ?>
+		</label>
+	<?php
+	}
+	public function field_lockout_notify()
+	{
+		$email    = get_option('gatalyn_lockout_notify_email', '');
+		$telegram = get_option('gatalyn_lockout_notify_telegram', '');
+		$after    = (int) get_option('gatalyn_lockout_notify_after', 4);
+	?>
+		<fieldset>
+			<label>
+				<input type="checkbox" name="gatalyn_lockout_notify_email" value="1" <?php checked('1', $email); ?> />
+				<?php esc_html_e('Email the site administrator', 'gatalyn-login-approval'); ?>
+			</label><br />
+			<label>
+				<input type="checkbox" name="gatalyn_lockout_notify_telegram" value="1" <?php checked('1', $telegram); ?> />
+				<?php esc_html_e('Send to the Telegram chat configured in the Telegram tab', 'gatalyn-login-approval'); ?>
+			</label><br />
+			<label>
+				<?php esc_html_e('Every', 'gatalyn-login-approval'); ?>
+				<input type="number" name="gatalyn_lockout_notify_after" value="<?php echo esc_attr($after); ?>" min="1" max="100" step="1" class="small-text" />
+				<?php esc_html_e('lockouts of the same address', 'gatalyn-login-approval'); ?>
+			</label>
+		</fieldset>
+		<p class="description">
+			<?php esc_html_e('Long lockouts are always reported.', 'gatalyn-login-approval'); ?>
+		</p>
+	<?php
+	}
+	public function field_trust_proxy()
+	{
+		$value     = get_option('gatalyn_trust_proxy', '');
+		$direct    = isset($_SERVER['REMOTE_ADDR']) ? sanitize_text_field(wp_unslash($_SERVER['REMOTE_ADDR'])) : '';
+		$forwarded = Gatalyn_IP::forwarded_ip();
+	?>
+		<label>
+			<input
+				type="checkbox"
+				name="gatalyn_trust_proxy"
+				id="gatalyn_trust_proxy"
+				value="1"
+				<?php checked('1', $value); ?>
+				<?php disabled(defined('GATALYN_TRUST_PROXY')); ?> />
+			<?php esc_html_e('My site is behind a reverse proxy or CDN (read the client IP from X-Forwarded-For)', 'gatalyn-login-approval'); ?>
+		</label>
+		<?php if (defined('GATALYN_TRUST_PROXY')) : ?>
+			<p class="description">
+				<?php esc_html_e('Set by the GATALYN_TRUST_PROXY constant in wp-config.php.', 'gatalyn-login-approval'); ?>
+			</p>
+		<?php endif; ?>
+		<p class="description">
+			<?php
+			echo esc_html(
+				sprintf(
+					/* translators: 1: REMOTE_ADDR value, 2: X-Forwarded-For value. */
+					__('Your connection: direct address %1$s, forwarded address %2$s.', 'gatalyn-login-approval'),
+					'' !== $direct ? $direct : '-',
+					'' !== $forwarded ? $forwarded : '-'
+				)
+			);
+			?>
+			<?php if ('' !== $forwarded) : ?>
+				<?php esc_html_e('A forwarded address is present, so you are probably behind a proxy.', 'gatalyn-login-approval'); ?>
+			<?php else : ?>
+				<?php esc_html_e('No forwarded address, so you are probably not behind a proxy. Leave this off: when it is on, attackers can fake their address.', 'gatalyn-login-approval'); ?>
+			<?php endif; ?>
+		</p>
+	<?php
+	}
 	public function field_rest_api_mode()
 	{
 		$value = (string) get_option('gatalyn_rest_api_mode', 'off');
@@ -1063,6 +1612,22 @@ class Gatalyn_Settings
 	{
 		$value = absint($value);
 		return max(1, min(1440, $value));
+	}
+	public function sanitize_retry_window_hours($value)
+	{
+		return max(1, min(168, absint($value)));
+	}
+	public function sanitize_long_lockout_after($value)
+	{
+		return min(100, absint($value));
+	}
+	public function sanitize_long_lockout_hours($value)
+	{
+		return max(1, min(720, absint($value)));
+	}
+	public function sanitize_lockout_notify_after($value)
+	{
+		return max(1, min(100, absint($value)));
 	}
 	public function sanitize_rest_api_mode($value)
 	{

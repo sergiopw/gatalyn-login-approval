@@ -547,7 +547,7 @@ class Gatalyn_Settings
 	/**
 	 * Renders the full settings page with a tabbed layout.
 	 *
-	 * Three tabs — General, Email, Telegram — share a single <form> so that
+	 * Four tabs — General, Email, Telegram, Security — share a single <form> so that
 	 * all sections are saved together with one submit button. JavaScript shows
 	 * only the active tab panel; the hidden panels are still part of the DOM
 	 * and submitted with the form.
@@ -574,6 +574,9 @@ class Gatalyn_Settings
 					</a>
 					<a href="#" class="nav-tab gatalyn-tab-link" data-tab="telegram">
 						<?php esc_html_e('Telegram', 'gatalyn-login-approval'); ?>
+					</a>
+					<a href="#" class="nav-tab gatalyn-tab-link" data-tab="security">
+						<?php esc_html_e('Security', 'gatalyn-login-approval'); ?>
 					</a>
 				</nav>
 
@@ -641,6 +644,29 @@ class Gatalyn_Settings
 						<tr>
 							<th scope="row"><?php esc_html_e('Test Connection', 'gatalyn-login-approval'); ?></th>
 							<td><?php $this->field_telegram_test(); ?></td>
+						</tr>
+					</table>
+				</div>
+
+				<!-- Security tab -->
+				<div id="gatalyn-tab-security" class="gatalyn-tab-content">
+					<?php $this->hardening_section_description(); ?>
+					<table class="form-table" role="presentation">
+						<tr>
+							<th scope="row"><?php esc_html_e('Limit Login Attempts', 'gatalyn-login-approval'); ?></th>
+							<td><?php $this->field_limit_attempts_enabled(); ?></td>
+						</tr>
+						<tr>
+							<th scope="row"><?php esc_html_e('Allowed Failed Attempts', 'gatalyn-login-approval'); ?></th>
+							<td><?php $this->field_max_attempts(); ?></td>
+						</tr>
+						<tr>
+							<th scope="row"><?php esc_html_e('Lockout Duration', 'gatalyn-login-approval'); ?></th>
+							<td><?php $this->field_lockout_minutes(); ?></td>
+						</tr>
+						<tr>
+							<th scope="row"><?php esc_html_e('REST API Access', 'gatalyn-login-approval'); ?></th>
+							<td><?php $this->field_rest_api_mode(); ?></td>
 						</tr>
 					</table>
 				</div>
@@ -952,13 +978,7 @@ class Gatalyn_Settings
 	// Sanitize callbacks
 	// -------------------------------------------------------------------------
 
-	/**
-	 * Returns '1' for truthy values, '' otherwise.
-	 *
-	 * @param mixed $value
-	 *
-	 * @return string
-	 */
+	/** Renders the description shown at the top of the Security tab. */
 	public function hardening_section_description()
 	{
 	?>
@@ -970,6 +990,8 @@ class Gatalyn_Settings
 		</p>
 	<?php
 	}
+
+	/** Renders the Limit Login Attempts checkbox. */
 	public function field_limit_attempts_enabled()
 	{
 		$value = get_option('gatalyn_limit_attempts_enabled', '');
@@ -988,6 +1010,8 @@ class Gatalyn_Settings
 		</p>
 	<?php
 	}
+
+	/** Renders the allowed failed attempts number input. */
 	public function field_max_attempts()
 	{
 		$value = (int) get_option('gatalyn_max_attempts', 5);
@@ -1007,6 +1031,8 @@ class Gatalyn_Settings
 		</p>
 	<?php
 	}
+
+	/** Renders the lockout duration number input. */
 	public function field_lockout_minutes()
 	{
 		$value = (int) get_option('gatalyn_lockout_minutes', 15);
@@ -1026,6 +1052,8 @@ class Gatalyn_Settings
 		</p>
 	<?php
 	}
+
+	/** Renders the REST API restriction select. */
 	public function field_rest_api_mode()
 	{
 		$value = (string) get_option('gatalyn_rest_api_mode', 'off');
@@ -1050,6 +1078,14 @@ class Gatalyn_Settings
 		</p>
 	<?php
 	}
+
+	/**
+	 * Returns '1' for truthy values, '' otherwise.
+	 *
+	 * @param mixed $value
+	 *
+	 * @return string
+	 */
 	public function sanitize_checkbox($value)
 	{
 		return $value ? '1' : '';

@@ -14,3 +14,12 @@ add_action(
         $phpmailer->SMTPAutoTLS = false;
     }
 );
+
+// WordPress builds the default sender from the site host ("wordpress@localhost"),
+// which PHPMailer rejects as invalid, so no mail would ever reach Mailpit.
+add_filter(
+    'wp_mail_from',
+    static function () {
+        return 'wordpress@example.com';
+    }
+);

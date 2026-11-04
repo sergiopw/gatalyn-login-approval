@@ -34,6 +34,7 @@ services:
     volumes:
       - wordpress_data:/var/www/html
       - ./includes:/var/www/html/wp-content/plugins/gatalyn-login-approval/includes
+      - ./assets:/var/www/html/wp-content/plugins/gatalyn-login-approval/assets
       - ./gatalyn-login-approval.php:/var/www/html/wp-content/plugins/gatalyn-login-approval/gatalyn-login-approval.php
       - ./uninstall.php:/var/www/html/wp-content/plugins/gatalyn-login-approval/uninstall.php
       - ./.docker/local-mailpit.php:/var/www/html/wp-content/mu-plugins/local-mailpit.php
@@ -53,6 +54,7 @@ services:
     volumes:
       - wordpress_data:/var/www/html
       - ./includes:/var/www/html/wp-content/plugins/gatalyn-login-approval/includes
+      - ./assets:/var/www/html/wp-content/plugins/gatalyn-login-approval/assets
       - ./gatalyn-login-approval.php:/var/www/html/wp-content/plugins/gatalyn-login-approval/gatalyn-login-approval.php
       - ./uninstall.php:/var/www/html/wp-content/plugins/gatalyn-login-approval/uninstall.php
       - ./.docker/wp-cli-install.sh:/workspace/.docker/wp-cli-install.sh

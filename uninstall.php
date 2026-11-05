@@ -27,7 +27,20 @@ $gatalyn_options = array(
 	'gatalyn_limit_attempts_enabled',
 	'gatalyn_max_attempts',
 	'gatalyn_lockout_minutes',
+	'gatalyn_retry_window_hours',
+	'gatalyn_long_lockout_after',
+	'gatalyn_long_lockout_hours',
+	'gatalyn_show_remaining',
+	'gatalyn_lockout_notify_email',
+	'gatalyn_lockout_notify_telegram',
+	'gatalyn_lockout_notify_after',
+	'gatalyn_trust_proxy',
+	'gatalyn_blocked_ips',
+	'gatalyn_blocked_usernames',
 	'gatalyn_rest_api_mode',
+	'gatalyn_lockout_log',
+	'gatalyn_lockouts_total',
+	'gatalyn_lla_imported',
 );
 
 foreach ($gatalyn_options as $gatalyn_option) {

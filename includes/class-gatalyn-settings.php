@@ -28,6 +28,7 @@
  *   gatalyn_lockout_notify_telegram (bool) Send lockout alerts to the Telegram chat.
  *   gatalyn_lockout_notify_after (int)    Notify every N lockouts of one IP (default 4).
  *   gatalyn_trust_proxy          (bool)   Read the client IP from X-Forwarded-For.
+ *   gatalyn_trusted_proxies      (string) Newline-separated proxy IPs / CIDRs whose forwarding headers are believed.
  *   gatalyn_blocked_ips          (string) Newline-separated IPs / CIDRs refused at login (IPv4 and IPv6).
  *   gatalyn_blocked_usernames    (string) Newline-separated usernames refused at login.
  *   gatalyn_rest_api_mode        (string) 'off', 'users', or 'all'.
@@ -146,7 +147,7 @@ class Gatalyn_Settings
 			'gatalyn_email_enabled',
 			array(
 				'type'              => 'boolean',
-				'sanitize_callback' => array($this, 'sanitize_checkbox'),
+				'sanitize_callback' => array($this, 'sanitize_email_enabled'),
 				'default'           => true,
 			)
 		);
@@ -323,176 +324,22 @@ class Gatalyn_Settings
 
 		register_setting(
 			self::OPTIONS_GROUP,
+			'gatalyn_trusted_proxies',
+			array(
+				'type'              => 'string',
+				'sanitize_callback' => array($this, 'sanitize_allowed_ips'),
+				'default'           => '',
+			)
+		);
+
+		register_setting(
+			self::OPTIONS_GROUP,
 			'gatalyn_trust_proxy',
 			array(
 				'type'              => 'boolean',
 				'sanitize_callback' => array($this, 'sanitize_checkbox'),
 				'default'           => false,
 			)
-		);
-
-		// ---- General section ------------------------------------------------
-
-		add_settings_section(
-			'gatalyn_general',
-			__('General Settings', 'gatalyn-login-approval'),
-			null,
-			self::MENU_SLUG
-		);
-
-		add_settings_field(
-			'gatalyn_enabled',
-			__('Enable Plugin', 'gatalyn-login-approval'),
-			array($this, 'field_enabled'),
-			self::MENU_SLUG,
-			'gatalyn_general'
-		);
-
-		add_settings_field(
-			'gatalyn_mode',
-			__('Approval Mode', 'gatalyn-login-approval'),
-			array($this, 'field_mode'),
-			self::MENU_SLUG,
-			'gatalyn_general'
-		);
-
-		add_settings_field(
-			'gatalyn_allowed_ips',
-			__('Allowed IP Addresses', 'gatalyn-login-approval'),
-			array($this, 'field_allowed_ips'),
-			self::MENU_SLUG,
-			'gatalyn_general'
-		);
-
-		add_settings_field(
-			'gatalyn_token_expiry',
-			__('Approval Link Expiry', 'gatalyn-login-approval'),
-			array($this, 'field_token_expiry'),
-			self::MENU_SLUG,
-			'gatalyn_general'
-		);
-
-		// ---- Email section --------------------------------------------------
-
-		add_settings_section(
-			'gatalyn_email',
-			__('Email Settings', 'gatalyn-login-approval'),
-			array($this, 'email_section_description'),
-			self::MENU_SLUG
-		);
-
-		add_settings_field(
-			'gatalyn_email_enabled',
-			__('Send via Email', 'gatalyn-login-approval'),
-			array($this, 'field_email_enabled'),
-			self::MENU_SLUG,
-			'gatalyn_email'
-		);
-
-		add_settings_field(
-			'gatalyn_email_subject',
-			__('Email Subject', 'gatalyn-login-approval'),
-			array($this, 'field_email_subject'),
-			self::MENU_SLUG,
-			'gatalyn_email'
-		);
-
-		add_settings_field(
-			'gatalyn_email_body',
-			__('Email Body', 'gatalyn-login-approval'),
-			array($this, 'field_email_body'),
-			self::MENU_SLUG,
-			'gatalyn_email'
-		);
-
-		// ---- Telegram section -----------------------------------------------
-
-		add_settings_section(
-			'gatalyn_telegram',
-			__('Telegram Settings', 'gatalyn-login-approval'),
-			array($this, 'telegram_section_description'),
-			self::MENU_SLUG
-		);
-
-		add_settings_field(
-			'gatalyn_telegram_enabled',
-			__('Send via Telegram', 'gatalyn-login-approval'),
-			array($this, 'field_telegram_enabled'),
-			self::MENU_SLUG,
-			'gatalyn_telegram'
-		);
-
-		add_settings_field(
-			'gatalyn_telegram_bot_token',
-			__('Bot Token', 'gatalyn-login-approval'),
-			array($this, 'field_telegram_bot_token'),
-			self::MENU_SLUG,
-			'gatalyn_telegram'
-		);
-
-		add_settings_field(
-			'gatalyn_telegram_chat_id',
-			__('Chat ID', 'gatalyn-login-approval'),
-			array($this, 'field_telegram_chat_id'),
-			self::MENU_SLUG,
-			'gatalyn_telegram'
-		);
-
-		add_settings_field(
-			'gatalyn_telegram_message',
-			__('Message Template', 'gatalyn-login-approval'),
-			array($this, 'field_telegram_message'),
-			self::MENU_SLUG,
-			'gatalyn_telegram'
-		);
-
-		// ---- Security hardening section --------------------------------------
-
-		add_settings_section(
-			'gatalyn_hardening',
-			__('Security Hardening', 'gatalyn-login-approval'),
-			array($this, 'hardening_section_description'),
-			self::MENU_SLUG
-		);
-
-		add_settings_field(
-			'gatalyn_limit_attempts_enabled',
-			__('Limit Login Attempts', 'gatalyn-login-approval'),
-			array($this, 'field_limit_attempts_enabled'),
-			self::MENU_SLUG,
-			'gatalyn_hardening'
-		);
-
-		add_settings_field(
-			'gatalyn_max_attempts',
-			__('Allowed Failed Attempts', 'gatalyn-login-approval'),
-			array($this, 'field_max_attempts'),
-			self::MENU_SLUG,
-			'gatalyn_hardening'
-		);
-
-		add_settings_field(
-			'gatalyn_lockout_minutes',
-			__('Lockout Duration', 'gatalyn-login-approval'),
-			array($this, 'field_lockout_minutes'),
-			self::MENU_SLUG,
-			'gatalyn_hardening'
-		);
-
-		add_settings_field(
-			'gatalyn_rest_api_mode',
-			__('REST API Access', 'gatalyn-login-approval'),
-			array($this, 'field_rest_api_mode'),
-			self::MENU_SLUG,
-			'gatalyn_hardening'
-		);
-
-		add_settings_field(
-			'gatalyn_telegram_test',
-			__('Test Connection', 'gatalyn-login-approval'),
-			array($this, 'field_telegram_test'),
-			self::MENU_SLUG,
-			'gatalyn_telegram'
 		);
 	}
 
@@ -810,6 +657,10 @@ class Gatalyn_Settings
 						<tr>
 							<th scope="row"><?php esc_html_e('Reverse Proxy', 'gatalyn-login-approval'); ?></th>
 							<td><?php $this->field_trust_proxy(); ?></td>
+						</tr>
+						<tr>
+							<th scope="row"><?php esc_html_e('Trusted Proxies', 'gatalyn-login-approval'); ?></th>
+							<td><?php $this->field_trusted_proxies(); ?></td>
 						</tr>
 						<tr>
 							<th scope="row"><?php esc_html_e('REST API Access', 'gatalyn-login-approval'); ?></th>
@@ -1644,8 +1495,26 @@ class Gatalyn_Settings
 			<?php if ('' !== $forwarded) : ?>
 				<?php esc_html_e('A forwarded address is present, so you are probably behind a proxy.', 'gatalyn-login-approval'); ?>
 			<?php else : ?>
-				<?php esc_html_e('No forwarded address, so you are probably not behind a proxy. Leave this off: when it is on, attackers can fake their address.', 'gatalyn-login-approval'); ?>
+				<?php esc_html_e('No forwarded address, so you are probably not behind a proxy. Leave this off: when it is on without a real proxy in front, visitors can fake their address.', 'gatalyn-login-approval'); ?>
 			<?php endif; ?>
+		</p>
+	<?php
+	}
+
+	/** Renders the trusted proxies textarea. */
+	public function field_trusted_proxies()
+	{
+		$value = get_option('gatalyn_trusted_proxies', '');
+	?>
+		<textarea
+			name="gatalyn_trusted_proxies"
+			id="gatalyn_trusted_proxies"
+			rows="3"
+			cols="40"
+			class="large-text code"
+			<?php disabled(defined('GATALYN_TRUSTED_PROXIES')); ?>><?php echo esc_textarea(defined('GATALYN_TRUSTED_PROXIES') ? (string) GATALYN_TRUSTED_PROXIES : $value); ?></textarea>
+		<p class="description">
+			<?php esc_html_e('Only used with the reverse proxy option above. Leave it empty when exactly one proxy sits in front of the site: the address it reports last is then taken as the visitor. If a CDN sits in front of another proxy, list the addresses or CIDR ranges of every proxy in the chain, one per line (for Cloudflare, its published ranges). Forwarding headers from any other connection are ignored.', 'gatalyn-login-approval'); ?>
 		</p>
 	<?php
 	}
@@ -1686,6 +1555,48 @@ class Gatalyn_Settings
 	public function sanitize_checkbox($value)
 	{
 		return $value ? '1' : '';
+	}
+
+	/**
+	 * The email checkbox, with a safety net.
+	 *
+	 * With approval on and neither channel able to deliver the link, nobody can
+	 * log in and the only way back is renaming the plugin folder. So when the
+	 * form would leave email off and Telegram off or unconfigured, email stays on.
+	 *
+	 * @param mixed $value Submitted value.
+	 *
+	 * @return string
+	 */
+	public function sanitize_email_enabled($value)
+	{
+		if ($value) {
+			return '1';
+		}
+
+		// phpcs:disable WordPress.Security.NonceVerification.Missing -- options.php has verified the settings nonce.
+		$telegram_on = ! empty($_POST['gatalyn_telegram_enabled'])
+			&& '' !== trim(sanitize_text_field(wp_unslash($_POST['gatalyn_telegram_bot_token'] ?? '')))
+			&& '' !== trim(sanitize_text_field(wp_unslash($_POST['gatalyn_telegram_chat_id'] ?? '')));
+		$approval_on = ! empty($_POST['gatalyn_enabled']);
+		// phpcs:enable WordPress.Security.NonceVerification.Missing
+
+		if ($approval_on && ! $telegram_on) {
+			// Only defined in wp-admin; this callback also runs for option updates
+			// made elsewhere (WP-CLI, REST).
+			if (function_exists('add_settings_error')) {
+				add_settings_error(
+					'gatalyn_email_enabled',
+					'gatalyn_no_channel',
+					__('Email was kept on: with login approval active, at least one channel (email, or Telegram with a bot token and chat ID) must be able to deliver the approval link, or nobody could log in.', 'gatalyn-login-approval'),
+					'warning'
+				);
+			}
+
+			return '1';
+		}
+
+		return '';
 	}
 	public function sanitize_max_attempts($value)
 	{

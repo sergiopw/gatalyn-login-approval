@@ -18,6 +18,25 @@ if (! defined('ABSPATH')) {
 class Gatalyn_Token
 {
 
+	/**
+	 * Storage key for a token or request id.
+	 *
+	 * The identifiers themselves are bearer secrets (an approval token approves
+	 * a login, a request id collects it), so only their SHA-256 digest is used
+	 * in option and transient names: a copy of the options table, or a SQL
+	 * injection elsewhere on the site, then does not hand out working links.
+	 * Names stay under the 172-character transient limit.
+	 *
+	 * @param string $prefix Key family.
+	 * @param string $id     Token or request id as sent to the user.
+	 *
+	 * @return string
+	 */
+	private static function key($prefix, $id)
+	{
+		return $prefix . hash('sha256', (string) $id);
+	}
+
 	const APPROVAL_PREFIX = 'gatalyn_approval_';
 	const REQUEST_PREFIX  = 'gatalyn_request_';
 	const SESSION_PREFIX  = 'gatalyn_session_';
@@ -45,10 +64,10 @@ class Gatalyn_Token
 			'expires'     => time() + $expiry,
 		);
 
-		set_transient(self::APPROVAL_PREFIX . $token, $data, $expiry);
+		set_transient(self::key(self::APPROVAL_PREFIX, $token), $data, $expiry);
 
 		// Also store in option as fallback for Hostinger transient issues
-		update_option(self::APPROVAL_PREFIX . $token, $data, false);
+		update_option(self::key(self::APPROVAL_PREFIX, $token), $data, false);
 
 		return $token;
 	}
@@ -87,18 +106,32 @@ class Gatalyn_Token
 		$deny_data             = $common;
 		$deny_data['decision'] = 'deny';
 
-		set_transient(self::APPROVAL_PREFIX . $approve_token, $approve_data, $expiry);
-		set_transient(self::APPROVAL_PREFIX . $deny_token, $deny_data, $expiry);
+		set_transient(self::key(self::APPROVAL_PREFIX, $approve_token), $approve_data, $expiry);
+		set_transient(self::key(self::APPROVAL_PREFIX, $deny_token), $deny_data, $expiry);
 
 		// Also store in option as fallback for Hostinger transient issues
-		update_option(self::APPROVAL_PREFIX . $approve_token, $approve_data, false);
-		update_option(self::APPROVAL_PREFIX . $deny_token, $deny_data, false);
+		update_option(self::key(self::APPROVAL_PREFIX, $approve_token), $approve_data, false);
+		update_option(self::key(self::APPROVAL_PREFIX, $deny_token), $deny_data, false);
 
 		return array(
 			'approve' => $approve_token,
 			'deny'    => $deny_token,
 			'request_id' => $request_id,
 		);
+	}
+
+	/**
+	 * Request ids are 32 hex characters; anything else is not one of ours.
+	 *
+	 * @param string $request_id Value from the request.
+	 *
+	 * @return string The id, or '' when it is not well formed.
+	 */
+	public static function clean_request_id($request_id)
+	{
+		$request_id = trim((string) $request_id);
+
+		return preg_match('/^[a-f0-9]{32}$/i', $request_id) ? strtolower($request_id) : '';
 	}
 
 	/**
@@ -126,15 +159,16 @@ class Gatalyn_Token
 		);
 
 		set_transient(
-			self::REQUEST_PREFIX . sanitize_text_field($request_id),
+			self::key(self::REQUEST_PREFIX, $request_id),
 			$data,
 			max($expiry, 30 * MINUTE_IN_SECONDS)
 		);
 
 		// Also store in option as fallback for Hostinger transient issues
 		update_option(
-			'gatalyn_request_' . sanitize_text_field($request_id),
-			$data
+			self::key(self::REQUEST_PREFIX, $request_id),
+			$data,
+			false
 		);
 	}
 
@@ -147,7 +181,7 @@ class Gatalyn_Token
 	 */
 	public static function update_request_status($request_id, $status, $extra_data = array())
 	{
-		$request_id = sanitize_text_field($request_id);
+		$request_id = self::clean_request_id($request_id);
 		if ('' === $request_id) {
 			return;
 		}
@@ -162,15 +196,16 @@ class Gatalyn_Token
 		$existing               = array_merge($existing, $extra_data);
 
 		set_transient(
-			self::REQUEST_PREFIX . $request_id,
+			self::key(self::REQUEST_PREFIX, $request_id),
 			$existing,
 			30 * MINUTE_IN_SECONDS
 		);
 
 		// Also store in option as fallback for Hostinger transient issues
 		update_option(
-			'gatalyn_request_' . $request_id,
-			$existing
+			self::key(self::REQUEST_PREFIX, $request_id),
+			$existing,
+			false
 		);
 	}
 
@@ -183,20 +218,19 @@ class Gatalyn_Token
 	 */
 	public static function get_request_status($request_id)
 	{
-		if (empty($request_id)) {
+		$request_id = self::clean_request_id($request_id);
+		if ('' === $request_id) {
 			return false;
 		}
 
-		$request_id = sanitize_text_field($request_id);
-
 		// Try transient first (faster)
-		$status = get_transient(self::REQUEST_PREFIX . $request_id);
+		$status = get_transient(self::key(self::REQUEST_PREFIX, $request_id));
 		if (is_array($status)) {
 			return $status;
 		}
 
 		// Fallback to option for Hostinger transient issues
-		$status = get_option('gatalyn_request_' . $request_id);
+		$status = get_option(self::key(self::REQUEST_PREFIX, $request_id));
 		if (is_array($status)) {
 			// Check if expired (30 minutes)
 			$updated_at = (int) ($status['updated_at'] ?? 0);
@@ -216,13 +250,13 @@ class Gatalyn_Token
 	 */
 	public static function delete_request_status($request_id)
 	{
-		if (empty($request_id)) {
+		$request_id = self::clean_request_id($request_id);
+		if ('' === $request_id) {
 			return;
 		}
 
-		$request_id = sanitize_text_field($request_id);
-		delete_transient(self::REQUEST_PREFIX . $request_id);
-		delete_option('gatalyn_request_' . $request_id);
+		delete_transient(self::key(self::REQUEST_PREFIX, $request_id));
+		delete_option(self::key(self::REQUEST_PREFIX, $request_id));
 	}
 
 	/**
@@ -244,17 +278,17 @@ class Gatalyn_Token
 		}
 
 		// Try transient first (faster)
-		$data = get_transient(self::APPROVAL_PREFIX . $token);
+		$data = get_transient(self::key(self::APPROVAL_PREFIX, $token));
 		if (is_array($data)) {
 			return $data;
 		}
 
 		// Fallback to option for Hostinger transient issues
-		$data = get_option(self::APPROVAL_PREFIX . $token);
+		$data = get_option(self::key(self::APPROVAL_PREFIX, $token));
 		if (is_array($data)) {
 			$expires = (int) ($data['expires'] ?? 0);
 			if ($expires > 0 && time() > $expires) {
-				delete_option(self::APPROVAL_PREFIX . $token);
+				delete_option(self::key(self::APPROVAL_PREFIX, $token));
 				return false;
 			}
 			return $data;
@@ -270,9 +304,9 @@ class Gatalyn_Token
 	 */
 	public static function delete_approval($token)
 	{
-		$token = sanitize_text_field($token);
-		delete_transient(self::APPROVAL_PREFIX . $token);
-		delete_option(self::APPROVAL_PREFIX . $token);
+		$token = trim((string) $token);
+		delete_transient(self::key(self::APPROVAL_PREFIX, $token));
+		delete_option(self::key(self::APPROVAL_PREFIX, $token));
 	}
 
 	/**
@@ -294,7 +328,7 @@ class Gatalyn_Token
 			'user_login' => sanitize_user($user_login),
 		);
 
-		set_transient(self::SESSION_PREFIX . $token, $data, 30 * MINUTE_IN_SECONDS);
+		set_transient(self::key(self::SESSION_PREFIX, $token), $data, 30 * MINUTE_IN_SECONDS);
 
 		return $token;
 	}
@@ -312,7 +346,7 @@ class Gatalyn_Token
 			return false;
 		}
 
-		return get_transient(self::SESSION_PREFIX . sanitize_text_field($token));
+		return get_transient(self::key(self::SESSION_PREFIX, trim((string) $token)));
 	}
 
 	/**
@@ -322,7 +356,7 @@ class Gatalyn_Token
 	 */
 	public static function delete_session($token)
 	{
-		delete_transient(self::SESSION_PREFIX . sanitize_text_field($token));
+		delete_transient(self::key(self::SESSION_PREFIX, trim((string) $token)));
 	}
 
 	/**
@@ -341,7 +375,8 @@ class Gatalyn_Token
 			array(
 				'revoked_at' => time(),
 				'expiry'     => $expiry,
-			)
+			),
+			false
 		);
 	}
 
@@ -430,8 +465,6 @@ class Gatalyn_Token
 		$prefixes = array(
 			self::APPROVAL_PREFIX,
 			self::REQUEST_PREFIX,
-			self::REVOKED_PREFIX,
-			'gatalyn_request_',
 			'gatalyn_revoked_',
 			// Login lockout state written by Gatalyn_Store. Its option copy
 			// carries an 'expires' key, so the loop below already handles it.
@@ -465,13 +498,6 @@ class Gatalyn_Token
 						if (time() - (int) $data['revoked_at'] > (int) $data['expiry']) {
 							$is_expired = true;
 						}
-					}
-				} else {
-					// Corrupt or empty data? Check name
-					if (strpos($row->option_name, self::REVOKED_PREFIX) === 0) {
-						// it was stored as 1 but since option was separated maybe it didn't expire correctly.
-						// We'll leave the direct integers to normal transients cleanup, 
-						// though option fallback is array based.
 					}
 				}
 

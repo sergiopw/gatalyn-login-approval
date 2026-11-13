@@ -77,6 +77,19 @@ class Gatalyn_Email
             $body_template
         );
 
+        // The subject takes the same variables as the body; it is plain text, so
+        // the values go in as they are.
+        $subject = str_replace(
+            array('{user_name}', '{identifier}', '{site_name}', '{expiry_minutes}'),
+            array(
+                $user->display_name,
+                $identifier,
+                wp_specialchars_decode(get_bloginfo('name'), ENT_QUOTES),
+                (string) $expiry_minutes,
+            ),
+            $subject
+        );
+
         $headers = array('Content-Type: text/html; charset=UTF-8');
 
         return wp_mail($user->user_email, wp_specialchars_decode($subject), $body, $headers);

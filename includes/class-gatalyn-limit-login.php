@@ -88,6 +88,32 @@ class Gatalyn_Limit_Login
         add_filter('authenticate', array($this, 'block_locked_out'), 25, 3);
         add_action('wp_login', array($this, 'clear_attempts'), 10, 2);
         add_filter('login_errors', array($this, 'append_login_notice'));
+
+        // Application passwords (REST, XML-RPC) are a password login too: count
+        // their failures, and refuse them while the address is locked out.
+        add_action('application_password_failed_authentication', array($this, 'record_failure'));
+        add_filter('application_password_is_api_request', array($this, 'refuse_locked_out_app_passwords'));
+    }
+
+    /**
+     * Turns application passwords off for a request from a locked-out or
+     * blocked address, so the REST API can't be used to keep guessing.
+     *
+     * @param bool $is_api_request Whether application passwords may be used.
+     *
+     * @return bool
+     */
+    public function refuse_locked_out_app_passwords($is_api_request)
+    {
+        if (! $is_api_request || Gatalyn_IP::is_allowed()) {
+            return $is_api_request;
+        }
+
+        if (Gatalyn_IP::is_blocked() || self::lockout_remaining(Gatalyn_IP::get_client_ip()) > 0) {
+            return false;
+        }
+
+        return $is_api_request;
     }
 
     /**
@@ -164,8 +190,14 @@ class Gatalyn_Limit_Login
      *
      * @return void
      */
-    public function record_failure($username, $error = null)
+    public function record_failure($username = '', $error = null)
     {
+        // 'application_password_failed_authentication' passes only the error.
+        if ($username instanceof WP_Error) {
+            $error    = $username;
+            $username = '';
+        }
+
         // Returning a WP_Error from the 'authenticate' filter makes core fire
         // 'wp_login_failed' with that same error, so every block we issue comes
         // straight back here. The locked_until check below already covers the
@@ -181,7 +213,28 @@ class Gatalyn_Limit_Login
             return;
         }
 
-        $ip    = Gatalyn_IP::get_client_ip();
+        $ip   = Gatalyn_IP::bucket(Gatalyn_IP::get_client_ip());
+        $lock = self::acquire_lock($ip);
+
+        try {
+            $this->count_failure($ip, (string) $username);
+        } finally {
+            self::release_lock($lock);
+        }
+    }
+
+    /**
+     * Counts one failure against $ip and starts a lockout when the limit is hit.
+     * Runs under the per-address lock, so two simultaneous attempts can't both
+     * read the same count and write back one increment.
+     *
+     * @param string $ip       Counting unit from Gatalyn_IP::bucket().
+     * @param string $username Submitted username.
+     *
+     * @return void
+     */
+    private function count_failure($ip, $username)
+    {
         $now   = time();
         $state = self::get_state($ip);
 
@@ -217,8 +270,8 @@ class Gatalyn_Limit_Login
 
             $this->locked_now = $duration;
 
-            self::log_lockout($ip, (string) $username);
-            $this->notify_lockout($ip, (string) $username, $number, $duration, $is_long);
+            self::log_lockout($ip, $username);
+            $this->notify_lockout($ip, $username, $number, $duration, $is_long);
         } else {
             $this->remaining = $max_attempts - $state['count'];
         }
@@ -227,7 +280,57 @@ class Gatalyn_Limit_Login
     }
 
     /**
-     * Clears the counter once the user gets in.
+     * Takes a database-wide named lock for $ip, where the database has them.
+     *
+     * Best effort: on a database without GET_LOCK, or when the lock isn't
+     * granted within two seconds, the attempt is counted anyway; a lost
+     * increment under heavy parallel guessing is better than refusing logins.
+     *
+     * @param string $ip Counting unit.
+     *
+     * @return string|null Lock name to pass to release_lock(), or null.
+     */
+    private static function acquire_lock($ip)
+    {
+        global $wpdb;
+
+        $name = 'gll_' . md5($wpdb->prefix . $ip);
+
+        $suppress = $wpdb->suppress_errors(true);
+        $got      = $wpdb->get_var($wpdb->prepare('SELECT GET_LOCK(%s, 2)', $name)); // phpcs:ignore WordPress.DB.DirectDatabaseQuery
+        $wpdb->suppress_errors($suppress);
+
+        return '1' === (string) $got ? $name : null;
+    }
+
+    /**
+     * Releases a lock taken by acquire_lock().
+     *
+     * @param string|null $name Lock name.
+     *
+     * @return void
+     */
+    private static function release_lock($name)
+    {
+        global $wpdb;
+
+        if (null === $name) {
+            return;
+        }
+
+        $suppress = $wpdb->suppress_errors(true);
+        $wpdb->get_var($wpdb->prepare('SELECT RELEASE_LOCK(%s)', $name)); // phpcs:ignore WordPress.DB.DirectDatabaseQuery
+        $wpdb->suppress_errors($suppress);
+    }
+
+    /**
+     * Takes one failure off the counter once the user gets in.
+     *
+     * Wiping the counter would let anyone with an account of their own (an open
+     * registration is enough) interleave a successful login between guesses and
+     * try passwords against other accounts without end. Forgiving a single
+     * failure keeps an honest typo from counting against the user, while four
+     * guesses and one good login still add up to a lockout.
      *
      * @param string  $user_login Username.
      * @param WP_User $user       Authenticated user.
@@ -236,7 +339,20 @@ class Gatalyn_Limit_Login
      */
     public function clear_attempts($user_login = '', $user = null)
     {
-        Gatalyn_Store::delete(self::state_key(Gatalyn_IP::get_client_ip()));
+        $ip    = Gatalyn_IP::bucket(Gatalyn_IP::get_client_ip());
+        $state = self::get_state($ip);
+
+        if ($state['count'] > 0) {
+            $state['count']--;
+        }
+
+        if (0 === $state['count'] && 0 === $state['lockouts'] && $state['locked_until'] <= time()) {
+            Gatalyn_Store::delete(self::state_key($ip));
+
+            return;
+        }
+
+        self::save_state($ip, $state);
     }
 
     /**
@@ -573,7 +689,7 @@ class Gatalyn_Limit_Login
      */
     private static function state_key($ip)
     {
-        return self::KEY_PREFIX . md5((string) $ip);
+        return self::KEY_PREFIX . md5((string) Gatalyn_IP::bucket($ip));
     }
 
     /**

@@ -123,7 +123,24 @@ class Gatalyn_REST_API
             $route = (string) $GLOBALS['wp']->query_vars['rest_route'];
         }
 
-        return 0 === strpos($route, '/oembed/');
+        /**
+         * Routes that stay public in 'all' mode, as path prefixes.
+         *
+         * oEmbed is always on the list. Other plugins add the endpoints they
+         * authenticate on their own (an API key, a signed request), which a
+         * login requirement would otherwise lock out.
+         *
+         * @param string[] $prefixes Route prefixes such as '/oembed/'.
+         */
+        $prefixes = apply_filters('gatalyn_rest_public_routes', array('/oembed/'));
+
+        foreach ((array) $prefixes as $prefix) {
+            if ('' !== $prefix && 0 === strpos($route, (string) $prefix)) {
+                return true;
+            }
+        }
+
+        return false;
     }
 
     /**

@@ -3,7 +3,7 @@ Contributors: sergiopw
 Tags: login, security, limit login attempts, brute force, telegram
 Requires at least: 5.6
 Tested up to: 7.0
-Stable tag: 1.2.0
+Stable tag: 1.2.1
 Requires PHP: 7.4
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
@@ -70,7 +70,11 @@ You need to create a bot via BotFather on Telegram to get your Bot Token. Then, 
 
 = Can I whitelist my IP? =
 
-Yes, you can add your IP address (or multiple IP addresses and IPv4/IPv6 CIDR ranges, one per line) in the plugin settings to completely bypass the approval process. Whitelisted addresses are also exempt from the login attempt lockout.
+Yes, you can add your IP address (or multiple IP addresses and IPv4/IPv6 CIDR ranges, one per line) in the plugin settings to completely bypass the approval process. Whitelisted addresses are also exempt from the login attempt lockout. If your site is behind a reverse proxy or CDN, enable the proxy option and, where a CDN sits in front of another proxy, list the proxies under Trusted Proxies; otherwise the plugin sees the proxy's address, not the visitor's.
+
+= I can no longer receive approval emails. How do I get in? =
+
+Add `define( 'GATALYN_DISABLE', true );` to wp-config.php. The approval step is skipped until you remove the line. You can also rename the plugin folder over FTP.
 
 = I locked myself out with the login attempt limiter. What now? =
 
@@ -85,6 +89,22 @@ Everything the original plugin stores: allowed retries, lockout duration, allowe
 "Hide the users endpoint" will not: it only removes the route that lists your usernames. "Require login for the whole REST API" can, because plugins and themes often call the API from the front end without a session, for example contact forms, AJAX search, store endpoints, or page builders. Only oEmbed stays public so that existing embeds of your site elsewhere keep working. Test your front end after enabling it.
 
 == Changelog ==
+
+= 1.2.1 =
+* Security: with the reverse proxy option on, the visitor address is now taken from the end of X-Forwarded-For that your proxy wrote, not the start, which any visitor could forge to dodge lockouts and the approval step. New "Trusted Proxies" setting for a CDN in front of another proxy (Cloudflare's CF-Connecting-IP is honoured when the request came through a trusted proxy).
+* Security: approval and deny links now open a confirmation page and only act on the button. Mail scanners that open every link can no longer approve or deny a login by themselves.
+* Security: approval requests are limited per address and per username, and the response no longer reveals whether an account exists (same-shaped request id, and the email is sent after the page is returned).
+* Security: approval tokens and request ids are stored hashed, and their fallback rows are no longer autoloaded.
+* Security: a successful login no longer wipes the failed-attempt counter, which let a user with an account of their own guess other passwords without limit. IPv6 visitors are counted per /64 network. Failed application-password logins now count, and a locked-out address can't use them.
+* Fix: "After credentials" mode caused a fatal error for any password login that was not on wp-login.php (XML-RPC, front-end login forms). Those logins are now refused with a message instead.
+* Fix: in "After credentials" mode the waiting page now updates by itself and finishes the login when the approval is made on another device.
+* Fix: application passwords (REST API clients) are no longer blocked by the approval step.
+* Fix: Telegram messages with characters such as "<" in a name were rejected by Telegram.
+* Fix: the login-page health check no longer slows every admin page on hosts that block loopback requests, and no longer warns about a stale cache when the server's own address is whitelisted.
+* Fix: email subject now supports the same template variables as the body.
+* Fix: the settings page can no longer be saved with no way to deliver approval links. New GATALYN_DISABLE constant in wp-config.php turns the approval step off in an emergency.
+* Fix: uninstalling now cleans every site of a multisite network.
+* Other: a filter, gatalyn_rest_public_routes, lets other plugins keep their own endpoints public when the whole REST API requires login. The login status page no longer writes to the browser console.
 
 = 1.2.0 =
 * New: permanent blocklists for IP addresses and usernames. Blocked usernames count as failed attempts, so bots guessing "admin" get locked out.

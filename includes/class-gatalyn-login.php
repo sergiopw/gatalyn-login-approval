@@ -42,6 +42,24 @@ class Gatalyn_Login
     private $allowed_ips;
 
     /**
+     * Whether this request was authenticated with an application password.
+     * Those are separate, revocable credentials made for REST and XML-RPC
+     * clients that cannot open a login page, so neither approval mode applies.
+     *
+     * @var bool
+     */
+    private $app_password_auth = false;
+
+    /** Approval requests allowed per client address and window. */
+    const THROTTLE_IP_LIMIT = 10;
+
+    /** Approval requests allowed per username and window. */
+    const THROTTLE_USER_LIMIT = 3;
+
+    /** Length of the approval request window, in seconds. */
+    const THROTTLE_WINDOW = 900;
+
+    /**
      * Registers all login-related hooks.
      */
     public function init()
@@ -55,9 +73,18 @@ class Gatalyn_Login
         $raw_ips           = (string) get_option('gatalyn_allowed_ips', '');
         $this->allowed_ips = array_filter(array_map('trim', explode("\n", $raw_ips)));
 
-        if (! $this->enabled) {
+        // Escape hatch for an owner who can no longer receive approvals:
+        // define( 'GATALYN_DISABLE', true ); in wp-config.php.
+        if (! $this->enabled || (defined('GATALYN_DISABLE') && GATALYN_DISABLE)) {
             return;
         }
+
+        add_action(
+            'application_password_did_authenticate',
+            function () {
+                $this->app_password_auth = true;
+            }
+        );
 
         // Handle AJAX-like check_approval VERY early (before login_init)
         // This must happen before wp-login.php starts rendering any HTML
@@ -76,9 +103,12 @@ class Gatalyn_Login
 
         add_filter('login_message', array($this, 'login_message_filter'));
 
+        // The marker lets the health check tell a cached wp-login.php from a live
+        // one, so it has to be on every form this plugin can leave on screen.
+        add_action('login_footer', array($this, 'output_active_marker'));
+
         if ('after' === $this->mode) {
             add_filter('authenticate', array($this, 'after_mode_intercept'), 30, 3);
-            add_action('login_footer', array($this, 'output_active_marker'));
         } else {
             add_filter('authenticate', array($this, 'before_mode_enforce'), 30, 3);
         }
@@ -219,7 +249,8 @@ class Gatalyn_Login
 
     /**
      * Processes the pre-login form submission (before mode).
-     * Always redirects to the pending page to avoid user enumeration.
+     * Always shows the pending page, whether or not the user exists and whether
+     * or not anything was sent, so the response gives nothing away.
      */
     private function handle_request_approval()
     {
@@ -251,6 +282,13 @@ class Gatalyn_Login
             $user = get_user_by('email', $username);
         }
 
+        // Too many requests from this address or for this account: answer as
+        // for an unknown user and send nothing, so the form can't be used to
+        // flood somebody's inbox or Telegram chat.
+        if (! $this->allow_approval_request($username)) {
+            $user = false;
+        }
+
         if ($user) {
             // CRITICAL: Clear any revocation marker BEFORE generating new tokens
             // This ensures a fresh approval request isn't blocked by old denies
@@ -269,26 +307,6 @@ class Gatalyn_Login
                 $username
             );
 
-            // Send notification via the configured channel(s).
-            if (get_option('gatalyn_email_enabled', '1')) {
-                Gatalyn_Email::send_approval(
-                    $user,
-                    $pair['approve'],
-                    $pair['deny'],
-                    'before',
-                    $username
-                );
-            }
-            if (get_option('gatalyn_telegram_enabled', '')) {
-                Gatalyn_Telegram::send_approval(
-                    $user,
-                    $pair['approve'],
-                    $pair['deny'],
-                    'before',
-                    $username
-                );
-            }
-
             Gatalyn_Token::initialize_request_status(
                 $pair['request_id'],
                 'before',
@@ -297,31 +315,213 @@ class Gatalyn_Login
                 $redirect_to
             );
 
-            $this->show_pending_page($pair['request_id']);
+            $this->respond_then(
+                function () use ($pair) {
+                    $this->show_pending_page($pair['request_id']);
+                },
+                function () use ($user, $pair, $username) {
+                    $this->send_approval_messages($user, $pair, 'before', $username);
+                }
+            );
             exit;
         }
 
-        // User not found: show the same pending page with a fake request_id to
-        // prevent user enumeration. The check_approval endpoint returns 'pending'
-        // for unknown IDs, so the page looks identical and leaks nothing.
-        $fake_request_id = 'x' . bin2hex(random_bytes(16));
+        // User not found (or throttled): show the same pending page with a fake
+        // request_id. It has the same shape as a real one and the check_approval
+        // endpoint answers 'pending' for unknown ids, so nothing leaks.
+        $fake_request_id = bin2hex(random_bytes(16));
         $this->show_pending_page($fake_request_id);
         exit;
     }
 
     /**
-     * Processes an approval link click.
+     * Sends the approval link through every configured channel.
+     *
+     * @param WP_User $user       User asking to log in.
+     * @param array   $pair       Result of Gatalyn_Token::generate_approval_pair().
+     * @param string  $mode       'before' or 'after'.
+     * @param string  $identifier Username or email typed by the visitor.
+     */
+    private function send_approval_messages($user, $pair, $mode, $identifier)
+    {
+        if (get_option('gatalyn_email_enabled', '1')) {
+            Gatalyn_Email::send_approval($user, $pair['approve'], $pair['deny'], $mode, $identifier);
+        }
+
+        if (get_option('gatalyn_telegram_enabled', '')) {
+            Gatalyn_Telegram::send_approval($user, $pair['approve'], $pair['deny'], $mode, $identifier);
+        }
+    }
+
+    /**
+     * Sends the page to the browser first and only then runs the slow work
+     * (wp_mail and the Telegram call, which can take seconds). Otherwise the
+     * response time tells an attacker whether the account exists, and the visitor
+     * waits on the mail server.
+     *
+     * Where the server can't close the connection early (no FastCGI), the work
+     * simply runs after the output, so behaviour is the same, only slower.
+     *
+     * @param callable $render Prints the page.
+     * @param callable $work   Runs once the page is on its way.
+     */
+    private function respond_then($render, $work)
+    {
+        ignore_user_abort(true);
+
+        ob_start();
+        $render();
+        $html = ob_get_clean();
+
+        echo $html; // phpcs:ignore WordPress.Security.EscapeOutput.OutputNotEscaped -- markup built by the renderer above.
+
+        if (function_exists('fastcgi_finish_request')) {
+            fastcgi_finish_request();
+        } elseif (function_exists('litespeed_finish_request')) {
+            litespeed_finish_request();
+        } else {
+            if (function_exists('ob_get_level')) {
+                while (ob_get_level() > 0) {
+                    ob_end_flush();
+                }
+            }
+            flush();
+        }
+
+        $work();
+    }
+
+    /**
+     * Counts an approval request against the per-address and per-username
+     * limits. Whitelisted addresses are never limited.
+     *
+     * @param string $username Username or email typed by the visitor.
+     *
+     * @return bool False once a limit is exceeded.
+     */
+    private function allow_approval_request($username)
+    {
+        if ($this->is_ip_allowed()) {
+            return true;
+        }
+
+        $ip = Gatalyn_IP::bucket(Gatalyn_IP::get_client_ip());
+
+        $ip_ok   = $this->throttle('ip:' . $ip, self::THROTTLE_IP_LIMIT, self::THROTTLE_WINDOW);
+        $user_ok = $this->throttle('user:' . strtolower($username), self::THROTTLE_USER_LIMIT, self::THROTTLE_WINDOW);
+
+        return $ip_ok && $user_ok;
+    }
+
+    /**
+     * Fixed-window counter kept in Gatalyn_Store.
+     *
+     * @param string $bucket Counter name.
+     * @param int    $limit  Hits allowed per window.
+     * @param int    $window Window length in seconds.
+     *
+     * @return bool False when the limit was already reached.
+     */
+    private function throttle($bucket, $limit, $window)
+    {
+        $key   = Gatalyn_Limit_Login::KEY_PREFIX . 'rq_' . md5($bucket);
+        $now   = time();
+        $state = Gatalyn_Store::get($key);
+
+        if (! is_array($state) || $now >= (int) ($state['until'] ?? 0)) {
+            $state = array('n' => 0, 'until' => $now + $window);
+        }
+
+        if ((int) $state['n'] >= $limit) {
+            return false;
+        }
+
+        $state['n'] = (int) $state['n'] + 1;
+
+        Gatalyn_Store::set($key, $state, max(1, (int) $state['until'] - $now));
+
+        return true;
+    }
+
+    /**
+     * Whether the current request is a POST.
+     *
+     * @return bool
+     */
+    private function is_post_request()
+    {
+        return isset($_SERVER['REQUEST_METHOD']) && 'POST' === strtoupper(sanitize_text_field(wp_unslash($_SERVER['REQUEST_METHOD'])));
+    }
+
+    /**
+     * Returns the token from the approval link (GET) or its confirmation form (POST).
+     *
+     * @return string
+     */
+    private function get_decision_token()
+    {
+        $token = isset($_REQUEST['token']) // phpcs:ignore WordPress.Security.NonceVerification
+            ? trim(sanitize_text_field(wp_unslash($_REQUEST['token']))) // phpcs:ignore WordPress.Security.NonceVerification
+            : '';
+
+        return $token;
+    }
+
+    /**
+     * Shows the "are you sure" page an approval or deny link lands on.
+     *
+     * The link itself must not decide anything: mail scanners, link previewers
+     * and antivirus gateways open every URL in a message, and they would approve
+     * the login (or deny it, which also ends the user's sessions) before the
+     * owner ever looks at it. Only the button, a POST, does.
+     *
+     * @param string $decision 'approve' or 'deny'.
+     * @param string $token    Token from the link.
+     */
+    private function show_decision_page($decision, $token)
+    {
+        $approve = 'approve' === $decision;
+
+        $message = '<p class="message">' . esc_html(
+            $approve
+                ? __('Someone is trying to log in to this site. Approve only if it is you.', 'gatalyn-login-approval')
+                : __('Confirm that you did not try to log in. Any approved login session for your account will be ended.', 'gatalyn-login-approval')
+        ) . '</p>';
+
+        login_header(
+            $approve ? __('Approve Login', 'gatalyn-login-approval') : __('Deny Login', 'gatalyn-login-approval'),
+            $message
+        );
+        ?>
+        <form method="post" action="<?php echo esc_url(site_url('wp-login.php', 'login_post')); ?>">
+            <input type="hidden" name="action" value="<?php echo $approve ? 'gatalyn_approve' : 'gatalyn_deny'; ?>" />
+            <input type="hidden" name="token" value="<?php echo esc_attr($token); ?>" />
+            <p class="submit">
+                <input
+                    type="submit"
+                    class="button button-primary button-large"
+                    value="<?php echo esc_attr($approve ? __('Approve Login', 'gatalyn-login-approval') : __('Do NOT Authorize', 'gatalyn-login-approval')); ?>" />
+            </p>
+        </form>
+        <?php
+        login_footer();
+    }
+
+    /**
+     * Processes an approval link: asks for confirmation on GET, acts on POST.
      */
     private function handle_approve()
     {
-        $token = isset($_GET['token']) // phpcs:ignore WordPress.Security.NonceVerification
-            ? trim(sanitize_text_field(wp_unslash($_GET['token']))) // phpcs:ignore WordPress.Security.NonceVerification
-            : '';
-
-        $data = Gatalyn_Token::verify_approval($token);
+        $token = $this->get_decision_token();
+        $data  = Gatalyn_Token::verify_approval($token);
 
         if (false === $data || ('approve' !== ($data['decision'] ?? 'approve'))) {
             wp_safe_redirect(add_query_arg('gatalyn_error', 'invalid_token', wp_login_url()));
+            exit;
+        }
+
+        if (! $this->is_post_request()) {
+            $this->show_decision_page('approve', $token);
             exit;
         }
 
@@ -336,6 +536,12 @@ class Gatalyn_Login
         Gatalyn_Token::clear_user_revoked($user->ID);
 
         if ('after' === $data['mode']) {
+            // Let the browser that is waiting on the pending page finish its own
+            // login as well; see respond_check_approval().
+            if (! empty($data['request_id'])) {
+                Gatalyn_Token::update_request_status($data['request_id'], 'approved');
+            }
+
             wp_set_auth_cookie($user->ID, false);
             do_action('wp_login', $user->user_login, $user);
 
@@ -350,7 +556,6 @@ class Gatalyn_Login
         }
 
         $session_token = Gatalyn_Token::generate_session($user->ID, $user->user_login);
-        $secure        = is_ssl();
 
         if (! empty($data['request_id'])) {
             Gatalyn_Token::update_request_status(
@@ -363,28 +568,13 @@ class Gatalyn_Login
             );
         }
 
-        // Set session cookie with explicit parameters
-        setcookie(
-            'gatalyn_session',
-            $session_token,
-            array(
-                'expires'  => time() + 30 * MINUTE_IN_SECONDS,
-                'path'     => COOKIEPATH ?: '/',
-                'domain'   => COOKIE_DOMAIN ?: '',
-                'secure'   => $secure,
-                'httponly' => true,
-                'samesite' => 'Lax',
-            )
-        );
-
-        // Also use header to ensure it's sent
-        header('Set-Cookie: gatalyn_session=' . rawurlencode($session_token) . '; Max-Age=' . (30 * MINUTE_IN_SECONDS) . '; Path=' . (COOKIEPATH ?: '/') . '; ' . ($secure ? 'Secure; ' : '') . 'HttpOnly; SameSite=Lax', false);
+        $this->set_session_cookie($session_token);
 
         wp_safe_redirect(
             add_query_arg(
                 array(
-                    'gatalyn_approved' => '1',
-                    'log'          => rawurlencode($user->user_login),
+                    'gatalyn_approved'   => '1',
+                    'log'                => rawurlencode($user->user_login),
                     'gatalyn_request_id' => rawurlencode($data['request_id'] ?? ''),
                 ),
                 wp_login_url()
@@ -394,18 +584,20 @@ class Gatalyn_Login
     }
 
     /**
-     * Processes a deny link click.
+     * Processes a deny link: asks for confirmation on GET, acts on POST.
      */
     private function handle_deny()
     {
-        $token = isset($_GET['token']) // phpcs:ignore WordPress.Security.NonceVerification
-            ? trim(sanitize_text_field(wp_unslash($_GET['token']))) // phpcs:ignore WordPress.Security.NonceVerification
-            : '';
-
-        $data = Gatalyn_Token::verify_approval($token);
+        $token = $this->get_decision_token();
+        $data  = Gatalyn_Token::verify_approval($token);
 
         if (false === $data || 'deny' !== ($data['decision'] ?? 'deny')) {
             wp_safe_redirect(add_query_arg('gatalyn_error', 'invalid_token', wp_login_url()));
+            exit;
+        }
+
+        if (! $this->is_post_request()) {
+            $this->show_decision_page('deny', $token);
             exit;
         }
 
@@ -454,8 +646,23 @@ class Gatalyn_Login
             return $user;
         }
 
-        if ($this->is_ip_allowed()) {
+        if ($this->is_ip_allowed() || $this->app_password_auth) {
             return $user;
+        }
+
+        // The approval page is drawn with wp-login.php's own functions, so it
+        // can only be produced there. Any other password login (XML-RPC, a
+        // front-end login form, a script calling wp_signon) is refused instead
+        // of being waved through, which would skip the approval entirely.
+        if (! $this->is_login_request() || ! function_exists('login_header')) {
+            return new WP_Error(
+                'gatalyn_approval_required',
+                sprintf(
+                    /* translators: %s: login URL */
+                    __('<strong>Error:</strong> This site asks for approval of every login. Please <a href="%s">log in on the login page</a>.', 'gatalyn-login-approval'),
+                    esc_url(wp_login_url())
+                )
+            );
         }
 
         $redirect_to = sanitize_url(wp_unslash($_POST['redirect_to'] ?? '')); // phpcs:ignore WordPress.Security.NonceVerification
@@ -469,27 +676,24 @@ class Gatalyn_Login
             $username
         );
 
-        // Send notification via the configured channel(s).
-        if (get_option('gatalyn_email_enabled', '1')) {
-            Gatalyn_Email::send_approval(
-                $user,
-                $pair['approve'],
-                $pair['deny'],
-                'after',
-                $username
-            );
-        }
-        if (get_option('gatalyn_telegram_enabled', '')) {
-            Gatalyn_Telegram::send_approval(
-                $user,
-                $pair['approve'],
-                $pair['deny'],
-                'after',
-                $username
-            );
-        }
+        // Give the waiting page something to poll, so it notices an approval
+        // made on another device and finishes the login by itself.
+        Gatalyn_Token::initialize_request_status(
+            $pair['request_id'],
+            'after',
+            $user->ID,
+            $user->user_login,
+            $redirect_to
+        );
 
-        $this->show_pending_page();
+        $this->respond_then(
+            function () use ($pair) {
+                $this->show_pending_page($pair['request_id']);
+            },
+            function () use ($user, $pair, $username) {
+                $this->send_approval_messages($user, $pair, 'after', $username);
+            }
+        );
         exit;
     }
 
@@ -508,7 +712,7 @@ class Gatalyn_Login
             return $user;
         }
 
-        if ($this->is_ip_allowed()) {
+        if ($this->is_ip_allowed() || $this->app_password_auth) {
             return $user;
         }
 
@@ -682,61 +886,74 @@ class Gatalyn_Login
     }
 
     /**
-     * Returns the current approval state for a pending before-mode request.
+     * Returns the current approval state of a pending request as JSON.
+     *
+     * The status page polls this. For a before-mode request an approval hands
+     * the browser the session cookie that unlocks the password form; for an
+     * after-mode request the browser that is waiting finishes the login itself.
+     * The request id is 128 random bits known only to the page that asked.
      */
-    private function handle_check_approval()
+    private function respond_check_approval()
     {
         $request_id = isset($_GET['request_id']) // phpcs:ignore WordPress.Security.NonceVerification
-            ? sanitize_text_field(wp_unslash($_GET['request_id'])) // phpcs:ignore WordPress.Security.NonceVerification
+            ? Gatalyn_Token::clean_request_id(sanitize_text_field(wp_unslash($_GET['request_id']))) // phpcs:ignore WordPress.Security.NonceVerification
             : '';
 
-        if (empty($request_id)) {
+        if ('' === $request_id) {
             wp_send_json_error(array('message' => 'Invalid request ID'), 400);
         }
 
-        // Prevent caching
-        header('Cache-Control: no-cache, no-store, must-revalidate');
-        header('Pragma: no-cache');
-        header('Expires: 0');
+        nocache_headers();
 
         $status = Gatalyn_Token::get_request_status($request_id);
 
         if (! is_array($status)) {
             wp_send_json_success(array('status' => 'pending'));
-            return;
         }
 
         if ('approved' === ($status['status'] ?? '')) {
-            $session_token = $status['session_token'] ?? '';
-            if (! empty($session_token)) {
-                $secure = is_ssl();
-                setcookie(
-                    'gatalyn_session',
-                    $session_token,
+            if ('after' === ($status['mode'] ?? '')) {
+                $user = get_user_by('id', (int) ($status['user_id'] ?? 0));
+
+                if (! $user) {
+                    wp_send_json_success(array('status' => 'pending'));
+                }
+
+                // Single use: the request can't be replayed once it logged someone in.
+                Gatalyn_Token::delete_request_status($request_id);
+
+                wp_set_auth_cookie($user->ID, false);
+                do_action('wp_login', $user->user_login, $user);
+
+                $redirect_to = ! empty($status['redirect_to']) ? $status['redirect_to'] : admin_url();
+                $redirect_to = apply_filters('login_redirect', $redirect_to, $redirect_to, $user);
+
+                wp_send_json_success(
                     array(
-                        'expires'  => time() + 30 * MINUTE_IN_SECONDS,
-                        'path'     => COOKIEPATH ?: '/',
-                        'domain'   => COOKIE_DOMAIN ?: '',
-                        'secure'   => $secure,
-                        'httponly' => true,
-                        'samesite' => 'Lax',
+                        'status'       => 'approved',
+                        'redirect_url' => wp_validate_redirect($redirect_to, admin_url()),
                     )
                 );
             }
+
+            $session_token = $status['session_token'] ?? '';
+            if (! empty($session_token)) {
+                $this->set_session_cookie($session_token);
+            }
+
             wp_send_json_success(
                 array(
                     'status'       => 'approved',
                     'redirect_url' => add_query_arg(
                         array(
-                            'gatalyn_approved'      => '1',
-                            'log'               => rawurlencode($status['user_login'] ?? ''),
-                            'gatalyn_request_id'    => rawurlencode($request_id),
+                            'gatalyn_approved'   => '1',
+                            'log'                => rawurlencode($status['user_login'] ?? ''),
+                            'gatalyn_request_id' => rawurlencode($request_id),
                         ),
                         wp_login_url()
                     ),
                 )
             );
-            return;
         }
 
         if ('denied' === ($status['status'] ?? '')) {
@@ -746,10 +963,17 @@ class Gatalyn_Login
                     'message' => __('The approval request was denied. Please request a new approval email.', 'gatalyn-login-approval'),
                 )
             );
-            return;
         }
 
         wp_send_json_success(array('status' => 'pending'));
+    }
+
+    /**
+     * login_init route for the status poll (the early hook normally gets there first).
+     */
+    private function handle_check_approval()
+    {
+        $this->respond_check_approval();
     }
 
     /**
@@ -887,15 +1111,28 @@ class Gatalyn_Login
             return;
         }
 
+        // The loopback request costs up to five seconds, so it only runs where
+        // the admin is looking at this plugin, not on every wp-admin page.
+        $page = isset($_GET['page']) ? sanitize_key(wp_unslash($_GET['page'])) : ''; // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+
+        if ('gatalyn-settings' !== $page && 'plugins.php' !== ($GLOBALS['pagenow'] ?? '')) {
+            return;
+        }
+
         $response = wp_remote_get(
             wp_login_url(),
             array(
                 'timeout'   => 5,
-                'sslverify' => false,
+                // Same filter core uses for its own loopback requests.
+                'sslverify' => apply_filters('https_local_ssl_verify', false),
             )
         );
 
+        // A host that blocks loopback requests would otherwise be retried on
+        // every page load; remember the failure for a while instead.
         if (is_wp_error($response)) {
+            set_transient('gatalyn_health_result', 'error', 6 * HOUR_IN_SECONDS);
+
             return;
         }
 
@@ -1024,6 +1261,27 @@ class Gatalyn_Login
     }
 
     /**
+     * Sends the Gatalyn session cookie.
+     *
+     * @param string $token Session token.
+     */
+    private function set_session_cookie($token)
+    {
+        setcookie(
+            'gatalyn_session',
+            $token,
+            array(
+                'expires'  => time() + 30 * MINUTE_IN_SECONDS,
+                'path'     => COOKIEPATH ? COOKIEPATH : '/',
+                'domain'   => COOKIE_DOMAIN ? COOKIE_DOMAIN : '',
+                'secure'   => is_ssl(),
+                'httponly' => true,
+                'samesite' => 'Lax',
+            )
+        );
+    }
+
+    /**
      * Clears the Gatalyn session cookie.
      */
     private function clear_session_cookie()
@@ -1031,9 +1289,14 @@ class Gatalyn_Login
         setcookie(
             'gatalyn_session',
             '',
-            time() - HOUR_IN_SECONDS,
-            COOKIEPATH,
-            COOKIE_DOMAIN
+            array(
+                'expires'  => time() - HOUR_IN_SECONDS,
+                'path'     => COOKIEPATH ? COOKIEPATH : '/',
+                'domain'   => COOKIE_DOMAIN ? COOKIE_DOMAIN : '',
+                'secure'   => is_ssl(),
+                'httponly' => true,
+                'samesite' => 'Lax',
+            )
         );
     }
 
@@ -1143,69 +1406,7 @@ class Gatalyn_Login
             return;
         }
 
-        $request_id = isset($_GET['request_id']) // phpcs:ignore WordPress.Security.NonceVerification
-            ? sanitize_text_field(wp_unslash($_GET['request_id'])) // phpcs:ignore WordPress.Security.NonceVerification
-            : '';
-
-        if (empty($request_id)) {
-            wp_send_json_error(array('message' => 'Invalid request ID'), 400);
-        }
-
-        // Prevent caching
-        if (! has_action('wp_send_json_success') ) {
-            header('Cache-Control: no-cache, no-store, must-revalidate', true);
-            header('Pragma: no-cache', true);
-            header('Expires: 0', true);
-            header('Content-Type: application/json; charset=UTF-8', true);
-        }
-
-        $status = Gatalyn_Token::get_request_status($request_id);
-
-        if (! is_array($status)) {
-            wp_send_json_success(array('status' => 'pending'));
-        }
-
-        if ('approved' === ($status['status'] ?? '')) {
-            $session_token = $status['session_token'] ?? '';
-            if (! empty($session_token)) {
-                $secure = is_ssl();
-                setcookie(
-                    'gatalyn_session',
-                    $session_token,
-                    array(
-                        'expires'  => time() + 30 * MINUTE_IN_SECONDS,
-                        'path'     => COOKIEPATH ?: '/',
-                        'domain'   => COOKIE_DOMAIN ?: '',
-                        'secure'   => $secure,
-                        'httponly' => true,
-                        'samesite' => 'Lax',
-                    )
-                );
-            }
-            wp_send_json_success(
-                array(
-                    'status'       => 'approved',
-                    'redirect_url' => add_query_arg(
-                        array(
-                            'gatalyn_approved'      => '1',
-                            'log'               => rawurlencode($status['user_login'] ?? ''),
-                            'gatalyn_request_id'    => rawurlencode($request_id),
-                        ),
-                        wp_login_url()
-                    ),
-                )
-            );
-        }
-
-        if ('denied' === ($status['status'] ?? '')) {
-            wp_send_json_success(
-                array(
-                    'status'  => 'denied',
-                    'message' => __('The approval request was denied. Please request a new approval email.', 'gatalyn-login-approval'),
-                )
-            );
-        }
-
-        wp_send_json_success(array('status' => 'pending'));
+        $this->respond_check_approval();
     }
+
 }

@@ -88,11 +88,13 @@ class Gatalyn_Telegram
             array(
                 esc_url($approval_url),
                 esc_url($deny_url),
-                $user->display_name,
-                $identifier,
-                get_bloginfo('name'),
+                // parse_mode is HTML: a "<" or "&" in a display name or in what the
+                // visitor typed would make Telegram reject the whole message.
+                esc_html($user->display_name),
+                esc_html($identifier),
+                esc_html(wp_specialchars_decode(get_bloginfo('name'), ENT_QUOTES)),
                 (string) $expiry_minutes,
-                $mode_info,
+                esc_html($mode_info),
             ),
             $message_template
         );

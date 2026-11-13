@@ -19,13 +19,16 @@
 	var statusNode = document.getElementById('gatalyn-pending-status');
 	var strings = config.strings || {};
 	var pollCount = 0;
-	var maxPolls = 600; // 30 minutes limit
+	var startedAt = Date.now();
+	var maxDuration = 30 * 60 * 1000; // 30 minutes, matching the server-side request lifetime
 	var pendingTimeouts = [];
 	var currentDelay = 3000; // Starting delay
 	var maxDelay = 15000; // Maximum delay
 
+	// Console tracing is opt-in (GatalynPendingPoll.debug = true) so production
+	// login pages stay quiet.
 	function debug(msg, data) {
-		if (window.console && window.console.log) {
+		if (config.debug && window.console && window.console.log) {
 			console.log('[Gatalyn] ' + msg, data || '');
 		}
 	}
@@ -84,9 +87,9 @@
 		pollCount++;
 		debug('Poll #' + pollCount + ' checking:', config.checkUrl);
 
-		if (pollCount > maxPolls) {
+		if (Date.now() - startedAt > maxDuration) {
 			setStatus(strings.expired, '#ff9800');
-			debug('Max polls reached (' + maxPolls + ')');
+			debug('Polling window ended');
 			return;
 		}
 

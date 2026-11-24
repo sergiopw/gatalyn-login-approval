@@ -43,6 +43,7 @@ $gatalyn_options = array(
 	'gatalyn_lockouts_total',
 	'gatalyn_lla_imported',
 	'gatalyn_daily_stats',
+	'gatalyn_attempt_log',
 );
 
 /**

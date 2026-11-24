@@ -3,7 +3,7 @@ Contributors: sergiopw
 Tags: login, security, limit login attempts, brute force, telegram
 Requires at least: 5.6
 Tested up to: 7.0
-Stable tag: 1.3.1
+Stable tag: 1.3.2
 Requires PHP: 7.4
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
@@ -89,6 +89,9 @@ Everything the original plugin stores: allowed retries, lockout duration, allowe
 "Hide the users endpoint" will not: it only removes the route that lists your usernames. "Require login for the whole REST API" can, because plugins and themes often call the API from the front end without a session, for example contact forms, AJAX search, store endpoints, or page builders. Only oEmbed stays public so that existing embeds of your site elsewhere keep working. Test your front end after enabling it.
 
 == Changelog ==
+
+= 1.3.2 =
+* New: the dashboard lists the last 50 attempts: what was typed, IP, date and result (link sent, unknown name, too many requests, locked out, wrong password).
 
 = 1.3.1 =
 * Names that don't exist, typed in the approval form, now count as failed logins (dashboard, lockouts). A locked-out address gets no approval email.

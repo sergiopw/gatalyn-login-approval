@@ -222,6 +222,40 @@ class Gatalyn_Settings
 				</svg>
 			</div>
 
+			<h2><?php esc_html_e('Recent attempts', 'gatalyn-login-approval'); ?></h2>
+			<?php $attempts = array_reverse(array_slice(Gatalyn_Stats::attempts(), -50)); ?>
+			<?php if (! $attempts) : ?>
+				<p><?php esc_html_e('Nothing recorded yet.', 'gatalyn-login-approval'); ?></p>
+			<?php else : ?>
+				<?php
+				$labels = array(
+					'sent'           => __('Approval link sent', 'gatalyn-login-approval'),
+					'unknown'        => __('Unknown name', 'gatalyn-login-approval'),
+					'throttled'      => __('Too many requests', 'gatalyn-login-approval'),
+					'locked'         => __('Address locked out', 'gatalyn-login-approval'),
+					'wrong_password' => __('Wrong password', 'gatalyn-login-approval'),
+				);
+				?>
+				<table class="widefat striped" style="max-width:820px">
+					<thead><tr>
+						<th><?php esc_html_e('Date', 'gatalyn-login-approval'); ?></th>
+						<th><?php esc_html_e('Typed', 'gatalyn-login-approval'); ?></th>
+						<th><?php esc_html_e('IP', 'gatalyn-login-approval'); ?></th>
+						<th><?php esc_html_e('Result', 'gatalyn-login-approval'); ?></th>
+					</tr></thead>
+					<tbody>
+					<?php foreach ($attempts as $a) : ?>
+						<tr>
+							<td><?php echo esc_html(wp_date('j/n/Y H:i:s', (int) $a['t'])); ?></td>
+							<td><?php echo esc_html($a['user']); ?></td>
+							<td><?php echo esc_html($a['ip']); ?></td>
+							<td><?php echo esc_html(isset($labels[$a['result']]) ? $labels[$a['result']] : $a['result']); ?></td>
+						</tr>
+					<?php endforeach; ?>
+					</tbody>
+				</table>
+			<?php endif; ?>
+
 			<p>
 				<a class="button button-primary" href="<?php echo esc_url(admin_url('admin.php?page=' . self::MENU_SLUG)); ?>"><?php esc_html_e('Settings', 'gatalyn-login-approval'); ?></a>
 				<a class="button" href="<?php echo esc_url(admin_url('admin.php?page=' . self::MENU_SLUG . '&gatalyn_tab=lockouts')); ?>"><?php esc_html_e('Lockouts', 'gatalyn-login-approval'); ?></a>

@@ -285,10 +285,20 @@ class Gatalyn_Login
         // Too many requests from this address or for this account: answer as
         // for an unknown user and send nothing, so the form can't be used to
         // flood somebody's inbox or Telegram chat.
-        $exists = (bool) $user;
+        $exists  = (bool) $user;
+        $blocked = '';
 
-        if (! $this->allow_approval_request($username) || $this->ip_is_locked_out()) {
+        if ($this->ip_is_locked_out()) {
+            $blocked = 'locked';
+        } elseif (! $this->allow_approval_request($username)) {
+            $blocked = 'throttled';
+        }
+
+        if ('' !== $blocked) {
             $user = false;
+            Gatalyn_Stats::log_attempt($username, $blocked, 'approval');
+        } elseif ($user) {
+            Gatalyn_Stats::log_attempt($username, 'sent', 'approval');
         }
 
         if ($user) {
@@ -334,8 +344,11 @@ class Gatalyn_Login
         // A name that doesn't exist counts as a failed login, like a wrong
         // password does, so guessing names here shows up in the dashboard and
         // ends in a lockout. Throttled or locked-out requests are not counted again.
-        if (! $exists) {
+        if (! $exists && '' === $blocked) {
+            Gatalyn_Stats::log_attempt($username, 'unknown', 'approval');
+            Gatalyn_Stats::$quiet = true;
             $this->count_unknown_user($username);
+            Gatalyn_Stats::$quiet = false;
         }
 
         $fake_request_id = bin2hex(random_bytes(16));

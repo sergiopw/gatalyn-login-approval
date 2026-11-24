@@ -18,6 +18,54 @@ class Gatalyn_Stats
 	const OPTION    = 'gatalyn_daily_stats';
 	const KEEP_DAYS = 60;
 
+	const LOG_OPTION = 'gatalyn_attempt_log';
+	const LOG_MAX    = 100;
+
+	/**
+	 * Set while another logger already records the attempt.
+	 *
+	 * @var bool
+	 */
+	public static $quiet = false;
+
+	/**
+	 * Remembers one attempt: what was typed, from where, and what became of it.
+	 * Keeps the newest LOG_MAX entries. The name is attacker-controlled text.
+	 *
+	 * @param string $username Name or email typed.
+	 * @param string $result   Short code: sent, unknown, throttled, locked, wrong_password.
+	 * @param string $source   Where: approval or login.
+	 *
+	 * @return void
+	 */
+	public static function log_attempt($username, $result, $source)
+	{
+		if (self::$quiet) {
+			return;
+		}
+
+		$log   = self::attempts();
+		$log[] = array(
+			't'      => time(),
+			'ip'     => class_exists('Gatalyn_IP') ? Gatalyn_IP::get_client_ip() : '',
+			'user'   => substr(sanitize_text_field((string) $username), 0, 80),
+			'result' => $result,
+			'source' => $source,
+		);
+
+		update_option(self::LOG_OPTION, array_slice($log, -self::LOG_MAX), false);
+	}
+
+	/**
+	 * @return array[] Oldest first.
+	 */
+	public static function attempts()
+	{
+		$log = get_option(self::LOG_OPTION, array());
+
+		return is_array($log) ? $log : array();
+	}
+
 	/**
 	 * Adds one to today's counter.
 	 *

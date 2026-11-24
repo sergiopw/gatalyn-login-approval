@@ -210,6 +210,7 @@ class Gatalyn_Limit_Login
         }
 
         Gatalyn_Stats::record('failed');
+        Gatalyn_Stats::log_attempt($username, 'wrong_password', 'login');
 
         if (Gatalyn_IP::is_allowed()) {
             return;

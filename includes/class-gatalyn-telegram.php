@@ -194,6 +194,16 @@ class Gatalyn_Telegram
         $status = wp_remote_retrieve_response_code($response);
         $body   = wp_remote_retrieve_body($response);
 
+        if (409 === (int) $status) {
+            // The bot has a webhook, which another service is using: Telegram
+            // doesn't allow getUpdates then. Don't delete it for the user, that
+            // would break whatever uses it.
+            return new WP_Error(
+                'gatalyn_telegram_webhook',
+                __('This bot already has a webhook set up (another service uses it), so its messages cannot be read here. Create a separate bot with @BotFather for this plugin, or type the chat ID in by hand: send a message to @userinfobot to get it.', 'gatalyn-login-approval')
+            );
+        }
+
         if (200 !== (int) $status) {
             return new WP_Error(
                 'gatalyn_telegram_api',

@@ -1,0 +1,66 @@
+<svg xmlns="http://www.w3.org/2000/svg" viewBox="0 0 256 256" width="256" height="256">
+  <defs>
+    <linearGradient id="bgFace" x1="0" y1="0" x2="0.25" y2="1">
+      <stop offset="0%" stop-color="#3B5BDB"/>
+      <stop offset="55%" stop-color="#22358A"/>
+      <stop offset="100%" stop-color="#16235E"/>
+    </linearGradient>
+    <linearGradient id="bgRim" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#141F54"/>
+      <stop offset="100%" stop-color="#0B1130"/>
+    </linearGradient>
+    <linearGradient id="shackleGrad" x1="0" y1="0" x2="1" y2="1">
+      <stop offset="0%" stop-color="#F8FAFC"/>
+      <stop offset="60%" stop-color="#CBD5E1"/>
+      <stop offset="100%" stop-color="#94A3B8"/>
+    </linearGradient>
+    <linearGradient id="lockBody" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#FFFFFF"/>
+      <stop offset="100%" stop-color="#E2E8F0"/>
+    </linearGradient>
+    <linearGradient id="checkBadge" x1="0" y1="0" x2="0" y2="1">
+      <stop offset="0%" stop-color="#34D399"/>
+      <stop offset="60%" stop-color="#10B981"/>
+      <stop offset="100%" stop-color="#059669"/>
+    </linearGradient>
+    <clipPath id="tileClip">
+      <rect x="14" y="10" width="228" height="218" rx="56"/>
+    </clipPath>
+  </defs>
+
+  <!-- 3D extruded tile base -->
+  <rect x="14" y="28" width="228" height="218" rx="56" fill="url(#bgRim)"/>
+  <!-- Main tile face -->
+  <rect x="14" y="10" width="228" height="218" rx="56" fill="url(#bgFace)"/>
+  <!-- Top gloss & bevel highlight -->
+  <g clip-path="url(#tileClip)">
+    <path d="M14 10 H242 V54 C186 78 70 78 14 54 Z" fill="#FFFFFF" opacity="0.14"/>
+    <rect x="18" y="14" width="220" height="210" rx="52" fill="none" stroke="#93C5FD" stroke-width="4" opacity="0.45"/>
+  </g>
+
+  <!-- Padlock drop shadow -->
+  <g transform="translate(8, 16)" opacity="0.42">
+    <path d="M88 112 V86 C88 63 106 46 128 46 C150 46 168 63 168 86 V112" fill="none" stroke="#0B1130" stroke-width="22" stroke-linecap="round"/>
+    <rect x="64" y="104" width="128" height="102" rx="26" fill="#0B1130"/>
+  </g>
+
+  <!-- Padlock shackle (3D back + front) -->
+  <path d="M88 112 V86 C88 63 106 46 128 46 C150 46 168 63 168 86 V112" fill="none" stroke="#64748B" stroke-width="22" stroke-linecap="round" transform="translate(0, 6)"/>
+  <path d="M88 112 V86 C88 63 106 46 128 46 C150 46 168 63 168 86 V112" fill="none" stroke="url(#shackleGrad)" stroke-width="22" stroke-linecap="round"/>
+
+  <!-- Padlock body (3D extrusion + front face) -->
+  <rect x="64" y="112" width="128" height="98" rx="26" fill="#94A3B8"/>
+  <rect x="64" y="102" width="128" height="98" rx="26" fill="url(#lockBody)"/>
+  <!-- Subtle inner top highlight on lock body -->
+  <rect x="67" y="105" width="122" height="92" rx="23" fill="none" stroke="#FFFFFF" stroke-width="2.5" opacity="0.9"/>
+
+  <!-- Emerald 3D approval badge centered on padlock -->
+  <circle cx="128" cy="155" r="34" fill="#047857" opacity="0.38"/>
+  <circle cx="128" cy="153" r="32" fill="#047857"/>
+  <circle cx="128" cy="149" r="32" fill="url(#checkBadge)"/>
+  <circle cx="128" cy="149" r="29" fill="none" stroke="#A7F3D0" stroke-width="2" opacity="0.55"/>
+
+  <!-- Crisp white checkmark -->
+  <path d="M113 150 L123.5 160.5 L144.5 138.5" fill="none" stroke="#065F46" stroke-width="9.5" stroke-linecap="round" stroke-linejoin="round" transform="translate(0, 2.5)" opacity="0.45"/>
+  <path d="M113 150 L123.5 160.5 L144.5 138.5" fill="none" stroke="#FFFFFF" stroke-width="9.5" stroke-linecap="round" stroke-linejoin="round"/>
+</svg>

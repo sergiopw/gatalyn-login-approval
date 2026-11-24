@@ -3,7 +3,7 @@ Contributors: sergiopw
 Tags: login, security, limit login attempts, brute force, telegram
 Requires at least: 5.6
 Tested up to: 7.0
-Stable tag: 1.2.1
+Stable tag: 1.3.0
 Requires PHP: 7.4
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
@@ -89,6 +89,9 @@ Everything the original plugin stores: allowed retries, lockout duration, allowe
 "Hide the users endpoint" will not: it only removes the route that lists your usernames. "Require login for the whole REST API" can, because plugins and themes often call the API from the front end without a session, for example contact forms, AJAX search, store endpoints, or page builders. Only oEmbed stays public so that existing embeds of your site elsewhere keep working. Test your front end after enabling it.
 
 == Changelog ==
+
+= 1.3.0 =
+* New: own top-level "Login Approval" menu with a Dashboard (failed logins, lockouts, approvals and denials, 14-day chart) and the Settings page. Old Settings links keep working.
 
 = 1.2.1 =
 * Security: with the reverse proxy option on, the visitor address is now taken from the end of X-Forwarded-For that your proxy wrote, not the start, which any visitor could forge to dodge lockouts and the approval step. New "Trusted Proxies" setting for a CDN in front of another proxy (Cloudflare's CF-Connecting-IP is honoured when the request came through a trusted proxy).

@@ -42,7 +42,8 @@ class Gatalyn_Settings
 {
 
 	const OPTIONS_GROUP = 'gatalyn_settings';
-	const MENU_SLUG     = 'gatalyn-settings';
+	const MENU_SLUG      = 'gatalyn-settings';
+	const DASHBOARD_SLUG = 'gatalyn-dashboard';
 
 	/**
 	 * Registers WordPress hooks.
@@ -50,6 +51,7 @@ class Gatalyn_Settings
 	public function init()
 	{
 		add_action('admin_menu', array($this, 'add_menu_page'));
+		add_action('admin_menu', array($this, 'redirect_old_menu'), 99);
 		add_action('admin_init', array($this, 'register_settings'));
 		add_action('admin_enqueue_scripts', array($this, 'enqueue_admin_scripts'));
 		add_action('wp_ajax_gatalyn_telegram_test', array($this, 'ajax_telegram_test'));
@@ -61,17 +63,171 @@ class Gatalyn_Settings
 	}
 
 	/**
-	 * Adds a submenu entry under Settings.
+	 * Hook suffix of the settings screen, set when the menu is registered.
+	 *
+	 * @var string
+	 */
+	private $settings_hook = '';
+
+	/**
+	 * Adds the plugin's own top-level menu: Dashboard and Settings.
 	 */
 	public function add_menu_page()
 	{
-		add_options_page(
-			__('Login Approval Settings', 'gatalyn-login-approval'),
+		add_menu_page(
 			__('Login Approval', 'gatalyn-login-approval'),
+			__('Login Approval', 'gatalyn-login-approval'),
+			'manage_options',
+			self::DASHBOARD_SLUG,
+			array($this, 'render_dashboard_page'),
+			'dashicons-shield-alt',
+			81
+		);
+
+		add_submenu_page(
+			self::DASHBOARD_SLUG,
+			__('Login Approval Dashboard', 'gatalyn-login-approval'),
+			__('Dashboard', 'gatalyn-login-approval'),
+			'manage_options',
+			self::DASHBOARD_SLUG,
+			array($this, 'render_dashboard_page')
+		);
+
+		$this->settings_hook = (string) add_submenu_page(
+			self::DASHBOARD_SLUG,
+			__('Login Approval Settings', 'gatalyn-login-approval'),
+			__('Settings', 'gatalyn-login-approval'),
 			'manage_options',
 			self::MENU_SLUG,
 			array($this, 'render_settings_page')
 		);
+	}
+
+	/**
+	 * The settings page used to live under Settings: keep old links working.
+	 */
+	public function redirect_old_menu()
+	{
+		global $pagenow;
+
+		// phpcs:ignore WordPress.Security.NonceVerification.Recommended
+		if ('options-general.php' === $pagenow && isset($_GET['page']) && self::MENU_SLUG === $_GET['page']) {
+			// phpcs:ignore WordPress.Security.NonceVerification.Recommended
+			$tab = isset($_GET['gatalyn_tab']) ? sanitize_key(wp_unslash($_GET['gatalyn_tab'])) : '';
+			wp_safe_redirect(add_query_arg(array('page' => self::MENU_SLUG, 'gatalyn_tab' => $tab), admin_url('admin.php')));
+			exit;
+		}
+	}
+
+	/**
+	 * Dashboard: counters and a chart of the last 14 days.
+	 */
+	public function render_dashboard_page()
+	{
+		if (! current_user_can('manage_options')) {
+			return;
+		}
+
+		$days   = 14;
+		$series = Gatalyn_Stats::series($days);
+		$today  = end($series);
+		$week   = array_slice($series, -7);
+
+		$sum = function ($rows, $key) {
+			return array_sum(wp_list_pluck($rows, $key));
+		};
+
+		$cards = array(
+			array(__('Failed logins today', 'gatalyn-login-approval'), (int) $today['failed']),
+			array(__('Failed logins, last 7 days', 'gatalyn-login-approval'), $sum($week, 'failed')),
+			array(__('Lockouts, last 7 days', 'gatalyn-login-approval'), $sum($week, 'lockout')),
+			array(__('Approved / denied, last 7 days', 'gatalyn-login-approval'), $sum($week, 'approved') . ' / ' . $sum($week, 'denied')),
+			array(__('Lockouts in total', 'gatalyn-login-approval'), Gatalyn_Limit_Login::total_lockouts()),
+		);
+
+		$max = max(5, max(wp_list_pluck($series, 'failed')), max(wp_list_pluck($series, 'lockout')));
+		// Round the top of the scale up to a tidy number.
+		$step = max(1, (int) ceil($max / 5));
+		$max  = $step * 5;
+
+		$w = 760;
+		$h = 260;
+		$l = 40;
+		$r = 12;
+		$t = 14;
+		$b = 32;
+		$pw = $w - $l - $r;
+		$ph = $h - $t - $b;
+		$n  = count($series);
+
+		$x = function ($i) use ($l, $pw, $n) {
+			return $l + ($n > 1 ? $pw * $i / ($n - 1) : 0);
+		};
+		$y = function ($v) use ($t, $ph, $max) {
+			return $t + $ph - ($ph * $v / $max);
+		};
+		$line = function ($key) use ($series, $x, $y) {
+			$pts = array();
+			foreach ($series as $i => $row) {
+				$pts[] = round($x($i), 1) . ',' . round($y($row[$key]), 1);
+			}
+			return implode(' ', $pts);
+		};
+?>
+		<div class="wrap">
+			<h1><?php echo esc_html(get_admin_page_title()); ?></h1>
+
+			<style>
+				.gatalyn-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin:16px 0}
+				.gatalyn-card{background:#fff;border:1px solid #dcdcde;border-radius:6px;padding:14px 16px}
+				.gatalyn-card b{display:block;font-size:26px;line-height:1.2;margin-top:4px}
+				.gatalyn-chart{background:#fff;border:1px solid #dcdcde;border-radius:6px;padding:14px 16px;max-width:820px}
+				.gatalyn-chart svg{width:100%;height:auto;display:block}
+				.gatalyn-legend{display:flex;gap:16px;margin:0 0 8px;font-size:13px}
+				.gatalyn-legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:6px}
+			</style>
+
+			<div class="gatalyn-cards">
+				<?php foreach ($cards as $card) : ?>
+					<div class="gatalyn-card"><?php echo esc_html($card[0]); ?><b><?php echo esc_html((string) $card[1]); ?></b></div>
+				<?php endforeach; ?>
+			</div>
+
+			<div class="gatalyn-chart">
+				<h2 style="margin-top:0"><?php
+					/* translators: %d: number of days */
+					echo esc_html(sprintf(__('Failed logins and lockouts, last %d days', 'gatalyn-login-approval'), $days));
+				?></h2>
+				<p class="gatalyn-legend">
+					<span><i style="background:#2271b1"></i><?php esc_html_e('Failed logins', 'gatalyn-login-approval'); ?></span>
+					<span><i style="background:#d63638"></i><?php esc_html_e('Lockouts', 'gatalyn-login-approval'); ?></span>
+				</p>
+				<svg viewBox="0 0 <?php echo (int) $w; ?> <?php echo (int) $h; ?>" role="img" aria-label="<?php esc_attr_e('Failed logins and lockouts per day', 'gatalyn-login-approval'); ?>">
+					<?php for ($g = 0; $g <= 5; $g++) : $gv = $step * $g; ?>
+						<line x1="<?php echo (int) $l; ?>" x2="<?php echo (int) ($w - $r); ?>" y1="<?php echo esc_attr(round($y($gv), 1)); ?>" y2="<?php echo esc_attr(round($y($gv), 1)); ?>" stroke="#dcdcde" stroke-width="1"/>
+						<text x="<?php echo (int) ($l - 6); ?>" y="<?php echo esc_attr(round($y($gv) + 4, 1)); ?>" text-anchor="end" font-size="11" fill="#646970"><?php echo (int) $gv; ?></text>
+					<?php endfor; ?>
+					<?php foreach ($series as $i => $row) : ?>
+						<?php if (0 === $i % 2 || $i === $n - 1) : ?>
+							<text x="<?php echo esc_attr(round($x($i), 1)); ?>" y="<?php echo (int) ($h - 10); ?>" text-anchor="middle" font-size="11" fill="#646970"><?php echo esc_html(wp_date('j/n', strtotime($row['date']))); ?></text>
+						<?php endif; ?>
+					<?php endforeach; ?>
+					<polyline points="<?php echo esc_attr($line('failed')); ?>" fill="none" stroke="#2271b1" stroke-width="2.5" stroke-linejoin="round"/>
+					<polyline points="<?php echo esc_attr($line('lockout')); ?>" fill="none" stroke="#d63638" stroke-width="2.5" stroke-linejoin="round"/>
+					<?php foreach ($series as $i => $row) : ?>
+						<circle cx="<?php echo esc_attr(round($x($i), 1)); ?>" cy="<?php echo esc_attr(round($y($row['failed']), 1)); ?>" r="3.5" fill="#2271b1">
+							<title><?php echo esc_html(sprintf('%s: %d / %d', wp_date(get_option('date_format'), strtotime($row['date'])), $row['failed'], $row['lockout'])); ?></title>
+						</circle>
+					<?php endforeach; ?>
+				</svg>
+			</div>
+
+			<p>
+				<a class="button button-primary" href="<?php echo esc_url(admin_url('admin.php?page=' . self::MENU_SLUG)); ?>"><?php esc_html_e('Settings', 'gatalyn-login-approval'); ?></a>
+				<a class="button" href="<?php echo esc_url(admin_url('admin.php?page=' . self::MENU_SLUG . '&gatalyn_tab=lockouts')); ?>"><?php esc_html_e('Lockouts', 'gatalyn-login-approval'); ?></a>
+			</p>
+		</div>
+<?php
 	}
 
 	/**
@@ -354,7 +510,7 @@ class Gatalyn_Settings
 	 */
 	public function enqueue_admin_scripts($hook_suffix)
 	{
-		if ('settings_page_' . self::MENU_SLUG !== $hook_suffix) {
+		if ($this->settings_hook !== $hook_suffix) {
 			return;
 		}
 
@@ -523,6 +679,7 @@ class Gatalyn_Settings
 ?>
 		<div class="wrap">
 			<h1><?php echo esc_html(get_admin_page_title()); ?></h1>
+			<?php settings_errors(); ?>
 
 			<form method="post" action="options.php">
 				<?php settings_fields(self::OPTIONS_GROUP); ?>
@@ -881,12 +1038,12 @@ class Gatalyn_Settings
 			printf(
 				'<div class="notice notice-info"><p>%s <a href="%s">%s</a></p></div>',
 				esc_html__('Gatalyn Login Approval can import your Limit Login Attempts settings and lockouts.', 'gatalyn-login-approval'),
-				esc_url(admin_url('options-general.php?page=' . self::MENU_SLUG . '&gatalyn_tab=lockouts')),
+				esc_url(admin_url('admin.php?page=' . self::MENU_SLUG . '&gatalyn_tab=lockouts')),
 				esc_html__('Review the import', 'gatalyn-login-approval')
 			);
 		}
 
-		if ('settings_page_' . self::MENU_SLUG !== $screen || ! isset($_GET['gatalyn_msg'])) { // phpcs:ignore WordPress.Security.NonceVerification.Recommended
+		if ($this->settings_hook !== $screen || ! isset($_GET['gatalyn_msg'])) { // phpcs:ignore WordPress.Security.NonceVerification.Recommended
 			return;
 		}
 
@@ -957,7 +1114,7 @@ class Gatalyn_Settings
 					'gatalyn_tab' => $tab,
 					'gatalyn_msg' => $msg,
 				),
-				admin_url('options-general.php')
+				admin_url('admin.php')
 			)
 		);
 		exit;

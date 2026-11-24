@@ -534,6 +534,7 @@ class Gatalyn_Login
         }
 
         Gatalyn_Token::clear_user_revoked($user->ID);
+        Gatalyn_Stats::record('approved');
 
         if ('after' === $data['mode']) {
             // Let the browser that is waiting on the pending page finish its own
@@ -614,6 +615,8 @@ class Gatalyn_Login
         if (! empty($data['request_id'])) {
             Gatalyn_Token::update_request_status($data['request_id'], 'denied');
         }
+
+        Gatalyn_Stats::record('denied');
 
         if (class_exists('WP_Session_Tokens')) {
             $manager = WP_Session_Tokens::get_instance($user->ID);

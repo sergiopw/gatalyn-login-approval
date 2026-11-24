@@ -209,6 +209,8 @@ class Gatalyn_Limit_Login
             return;
         }
 
+        Gatalyn_Stats::record('failed');
+
         if (Gatalyn_IP::is_allowed()) {
             return;
         }
@@ -540,6 +542,7 @@ class Gatalyn_Limit_Login
 
         self::save_log($log);
         self::add_to_total(1);
+        Gatalyn_Stats::record('lockout');
     }
 
     /**
@@ -603,7 +606,7 @@ class Gatalyn_Limit_Login
                     __('[%s] Too many failed login attempts', 'gatalyn-login-approval'),
                     $site
                 ),
-                $summary . "\n" . $last_user . "\n\n" . admin_url('options-general.php?page=gatalyn-settings&gatalyn_tab=lockouts')
+                $summary . "\n" . $last_user . "\n\n" . admin_url('admin.php?page=gatalyn-settings&gatalyn_tab=lockouts')
             );
         }
 

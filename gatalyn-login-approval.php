@@ -4,7 +4,7 @@
  * Plugin Name: Gatalyn Login Approval
  * Plugin URI:  https://github.com/sergiopw/gatalyn-login-approval
  * Description: Login approval by email or Telegram, Limit Login Attempts-style lockouts (with settings import), and REST API restrictions.
- * Version:     1.2.1
+ * Version:     1.3.0
  * Requires at least: 5.6
  * Tested up to: 7.0
  * Requires PHP: 7.4
@@ -19,7 +19,7 @@ if (! defined('ABSPATH')) {
 }
 
 if (! defined('GATALYN_VERSION')) {
-    define('GATALYN_VERSION', '1.2.1');
+    define('GATALYN_VERSION', '1.3.0');
 }
 
 if (! defined('GATALYN_PLUGIN_FILE')) {
@@ -35,6 +35,7 @@ require_once GATALYN_PLUGIN_DIR . 'includes/class-gatalyn-store.php';
 require_once GATALYN_PLUGIN_DIR . 'includes/class-gatalyn-token.php';
 require_once GATALYN_PLUGIN_DIR . 'includes/class-gatalyn-email.php';
 require_once GATALYN_PLUGIN_DIR . 'includes/class-gatalyn-telegram.php';
+require_once GATALYN_PLUGIN_DIR . 'includes/class-gatalyn-stats.php';
 require_once GATALYN_PLUGIN_DIR . 'includes/class-gatalyn-settings.php';
 require_once GATALYN_PLUGIN_DIR . 'includes/class-gatalyn-login.php';
 require_once GATALYN_PLUGIN_DIR . 'includes/class-gatalyn-limit-login.php';

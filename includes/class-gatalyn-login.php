@@ -285,7 +285,9 @@ class Gatalyn_Login
         // Too many requests from this address or for this account: answer as
         // for an unknown user and send nothing, so the form can't be used to
         // flood somebody's inbox or Telegram chat.
-        if (! $this->allow_approval_request($username)) {
+        $exists = (bool) $user;
+
+        if (! $this->allow_approval_request($username) || $this->ip_is_locked_out()) {
             $user = false;
         }
 
@@ -329,6 +331,13 @@ class Gatalyn_Login
         // User not found (or throttled): show the same pending page with a fake
         // request_id. It has the same shape as a real one and the check_approval
         // endpoint answers 'pending' for unknown ids, so nothing leaks.
+        // A name that doesn't exist counts as a failed login, like a wrong
+        // password does, so guessing names here shows up in the dashboard and
+        // ends in a lockout. Throttled or locked-out requests are not counted again.
+        if (! $exists) {
+            $this->count_unknown_user($username);
+        }
+
         $fake_request_id = bin2hex(random_bytes(16));
         $this->show_pending_page($fake_request_id);
         exit;
@@ -411,6 +420,38 @@ class Gatalyn_Login
         $user_ok = $this->throttle('user:' . strtolower($username), self::THROTTLE_USER_LIMIT, self::THROTTLE_WINDOW);
 
         return $ip_ok && $user_ok;
+    }
+
+    /**
+     * Whether the limiter is on and this address is locked out right now.
+     *
+     * @return bool
+     */
+    private function ip_is_locked_out()
+    {
+        if ('1' !== (string) get_option('gatalyn_limit_attempts_enabled', '') || $this->is_ip_allowed()) {
+            return false;
+        }
+
+        return Gatalyn_Limit_Login::lockout_remaining(Gatalyn_IP::bucket(Gatalyn_IP::get_client_ip())) > 0;
+    }
+
+    /**
+     * Counts a request for an unknown user as a failed login.
+     *
+     * @param string $username Name typed in the form.
+     *
+     * @return void
+     */
+    private function count_unknown_user($username)
+    {
+        if (! empty($GLOBALS['gatalyn_limit_login']) && '1' === (string) get_option('gatalyn_limit_attempts_enabled', '')) {
+            // Also records the daily counter.
+            $GLOBALS['gatalyn_limit_login']->record_failure($username);
+            return;
+        }
+
+        Gatalyn_Stats::record('failed');
     }
 
     /**
@@ -1056,12 +1097,13 @@ class Gatalyn_Login
 
             <?php do_action('login_form'); ?>
 
-            <p class="submit">
+            <p class="submit" style="text-align:center">
                 <input
                     type="submit"
                     name="wp-submit"
                     id="wp-submit"
                     class="button button-primary button-large"
+                    style="float:none"
                     value="<?php esc_attr_e('Send Approval Link', 'gatalyn-login-approval'); ?>" />
             </p>
         </form>

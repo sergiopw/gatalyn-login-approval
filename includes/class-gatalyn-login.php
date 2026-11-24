@@ -550,10 +550,11 @@ class Gatalyn_Login
         <form method="post" action="<?php echo esc_url(site_url('wp-login.php', 'login_post')); ?>">
             <input type="hidden" name="action" value="<?php echo $approve ? 'gatalyn_approve' : 'gatalyn_deny'; ?>" />
             <input type="hidden" name="token" value="<?php echo esc_attr($token); ?>" />
-            <p class="submit">
+            <p class="submit" style="text-align:center">
                 <input
                     type="submit"
                     class="button button-primary button-large"
+                    style="float:none"
                     value="<?php echo esc_attr($approve ? __('Approve Login', 'gatalyn-login-approval') : __('Do NOT Authorize', 'gatalyn-login-approval')); ?>" />
             </p>
         </form>
@@ -785,6 +786,11 @@ class Gatalyn_Login
         $request_status = $this->get_approved_request_status();
         if (is_array($request_status)) {
             if ((int) ($request_status['user_id'] ?? 0) !== $user->ID) {
+                // The approval was for somebody else: burn it, it must not be
+                // usable by whoever tried the wrong account.
+                Gatalyn_Token::delete_request_status($this->get_request_id());
+                $this->clear_session_cookie();
+
                 return new WP_Error(
                     'gatalyn_request_mismatch',
                     sprintf(

@@ -175,7 +175,7 @@ class Gatalyn_Settings
 		};
 ?>
 		<div class="wrap">
-			<h1><?php echo esc_html(get_admin_page_title()); ?></h1>
+			<h1><?php echo esc_html(get_admin_page_title()); ?> <span style="font-size:13px;font-weight:400;color:#646970;margin-left:8px">v<?php echo esc_html(GATALYN_VERSION); ?></span></h1>
 
 			<style>
 				.gatalyn-cards{display:grid;grid-template-columns:repeat(auto-fit,minmax(180px,1fr));gap:12px;margin:16px 0}
@@ -712,7 +712,7 @@ class Gatalyn_Settings
 		}
 ?>
 		<div class="wrap">
-			<h1><?php echo esc_html(get_admin_page_title()); ?></h1>
+			<h1><?php echo esc_html(get_admin_page_title()); ?> <span style="font-size:13px;font-weight:400;color:#646970;margin-left:8px">v<?php echo esc_html(GATALYN_VERSION); ?></span></h1>
 			<?php settings_errors(); ?>
 
 			<form method="post" action="options.php">

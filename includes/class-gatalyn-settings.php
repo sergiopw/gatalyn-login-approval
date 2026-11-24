@@ -284,6 +284,16 @@ class Gatalyn_Settings
 
 		register_setting(
 			self::OPTIONS_GROUP,
+			'gatalyn_login_notice',
+			array(
+				'type'              => 'boolean',
+				'sanitize_callback' => array($this, 'sanitize_checkbox'),
+				'default'           => false,
+			)
+		);
+
+		register_setting(
+			self::OPTIONS_GROUP,
 			'gatalyn_mode',
 			array(
 				'type'              => 'string',
@@ -755,6 +765,16 @@ class Gatalyn_Settings
 						<tr>
 							<th scope="row"><?php esc_html_e('Approval Link Expiry', 'gatalyn-login-approval'); ?></th>
 							<td><?php $this->field_token_expiry(); ?></td>
+						</tr>
+						<tr>
+							<th scope="row"><?php esc_html_e('Login Notification', 'gatalyn-login-approval'); ?></th>
+							<td>
+								<label>
+									<input type="checkbox" name="gatalyn_login_notice" value="1" <?php checked('1', (string) get_option('gatalyn_login_notice', '')); ?> />
+									<?php esc_html_e('Send a message after every successful login, with a button to close the session', 'gatalyn-login-approval'); ?>
+								</label>
+								<p class="description"><?php esc_html_e('Uses the email and Telegram settings of the Email and Telegram tabs.', 'gatalyn-login-approval'); ?></p>
+							</td>
 						</tr>
 					</table>
 				</div>

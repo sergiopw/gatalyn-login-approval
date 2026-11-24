@@ -1411,6 +1411,7 @@ class Gatalyn_Login
         $gatalyn_actions = array(
             'gatalyn_approve',
             'gatalyn_deny',
+            'gatalyn_logout',
             'gatalyn_pending',
             'gatalyn_request_approval',
             'gatalyn_check_approval',

@@ -4,7 +4,7 @@
  * Plugin Name: Gatalyn Login Approval
  * Plugin URI:  https://github.com/sergiopw/gatalyn-login-approval
  * Description: Login approval by email or Telegram, Limit Login Attempts-style lockouts (with settings import), and REST API restrictions.
- * Version:     1.3.4
+ * Version:     1.4.0
  * Requires at least: 5.6
  * Tested up to: 7.0
  * Requires PHP: 7.4
@@ -19,7 +19,7 @@ if (! defined('ABSPATH')) {
 }
 
 if (! defined('GATALYN_VERSION')) {
-    define('GATALYN_VERSION', '1.3.4');
+    define('GATALYN_VERSION', '1.4.0');
 }
 
 if (! defined('GATALYN_PLUGIN_FILE')) {
@@ -38,6 +38,7 @@ require_once GATALYN_PLUGIN_DIR . 'includes/class-gatalyn-telegram.php';
 require_once GATALYN_PLUGIN_DIR . 'includes/class-gatalyn-stats.php';
 require_once GATALYN_PLUGIN_DIR . 'includes/class-gatalyn-settings.php';
 require_once GATALYN_PLUGIN_DIR . 'includes/class-gatalyn-login.php';
+require_once GATALYN_PLUGIN_DIR . 'includes/class-gatalyn-login-notice.php';
 require_once GATALYN_PLUGIN_DIR . 'includes/class-gatalyn-limit-login.php';
 require_once GATALYN_PLUGIN_DIR . 'includes/class-gatalyn-lla-import.php';
 require_once GATALYN_PLUGIN_DIR . 'includes/class-gatalyn-rest-api.php';
@@ -76,6 +77,7 @@ function gatalyn_activate_plugin()
     add_option('gatalyn_blocked_ips', '');
     add_option('gatalyn_blocked_usernames', '');
     add_option('gatalyn_rest_api_mode', 'off');
+    add_option('gatalyn_login_notice', '');
 
     if (! wp_next_scheduled('gatalyn_daily_garbage_collection')) {
         wp_schedule_event(time(), 'daily', 'gatalyn_daily_garbage_collection');
@@ -102,6 +104,8 @@ $GLOBALS['gatalyn_login_handler']->init();
  * the limiter filters 'authenticate', and REST restrictions must be in place
  * before rest_api_init runs.
  */
+(new Gatalyn_Login_Notice())->init();
+
 $GLOBALS['gatalyn_limit_login'] = new Gatalyn_Limit_Login();
 $GLOBALS['gatalyn_limit_login']->init();
 

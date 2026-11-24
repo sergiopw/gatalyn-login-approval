@@ -41,6 +41,68 @@ class Gatalyn_Token
 	const REQUEST_PREFIX  = 'gatalyn_request_';
 	const SESSION_PREFIX  = 'gatalyn_session_';
 	const REVOKED_PREFIX  = 'gatalyn_revoked_user_';
+	const LOGOUT_PREFIX   = 'gatalyn_logout_';
+
+	/** How long the "close the session" link in a login notice keeps working. */
+	const LOGOUT_TTL = 3 * DAY_IN_SECONDS;
+
+	/**
+	 * Token for the "this wasn't me, close the sessions" link of a login notice.
+	 * It is a separate family from approval tokens, so it can never approve a login.
+	 *
+	 * @param int $user_id User who logged in.
+	 *
+	 * @return string 64-character hex token.
+	 */
+	public static function generate_logout($user_id)
+	{
+		$token = bin2hex(random_bytes(32));
+		$data  = array(
+			'user_id' => (int) $user_id,
+			'expires' => time() + self::LOGOUT_TTL,
+		);
+
+		set_transient(self::key(self::LOGOUT_PREFIX, $token), $data, self::LOGOUT_TTL);
+		update_option(self::key(self::LOGOUT_PREFIX, $token), $data, false);
+
+		return $token;
+	}
+
+	/**
+	 * @param string $token Token from the link.
+	 *
+	 * @return array|false Stored data, or false when unknown or expired.
+	 */
+	public static function verify_logout($token)
+	{
+		$token = trim((string) $token);
+		if (! preg_match('/^[a-f0-9]{64}$/i', $token)) {
+			return false;
+		}
+
+		$data = get_transient(self::key(self::LOGOUT_PREFIX, $token));
+		if (! is_array($data)) {
+			$data = get_option(self::key(self::LOGOUT_PREFIX, $token));
+		}
+
+		if (! is_array($data) || time() > (int) ($data['expires'] ?? 0)) {
+			return false;
+		}
+
+		return $data;
+	}
+
+	/**
+	 * @param string $token Token to use up.
+	 *
+	 * @return void
+	 */
+	public static function delete_logout($token)
+	{
+		$token = trim((string) $token);
+		delete_transient(self::key(self::LOGOUT_PREFIX, $token));
+		delete_option(self::key(self::LOGOUT_PREFIX, $token));
+	}
 
 	/**
 	 * Generates an approval token for the given user and stores it as a transient.
@@ -465,6 +527,7 @@ class Gatalyn_Token
 		$prefixes = array(
 			self::APPROVAL_PREFIX,
 			self::REQUEST_PREFIX,
+			self::LOGOUT_PREFIX,
 			'gatalyn_revoked_',
 			// Login lockout state written by Gatalyn_Store. Its option copy
 			// carries an 'expires' key, so the loop below already handles it.

@@ -187,6 +187,11 @@ class Gatalyn_Settings
 				.gatalyn-legend i{display:inline-block;width:10px;height:10px;border-radius:2px;margin-right:6px}
 			</style>
 
+			<p class="gatalyn-actions">
+				<a class="button button-primary" href="<?php echo esc_url(admin_url('admin.php?page=' . self::MENU_SLUG)); ?>"><?php esc_html_e('Settings', 'gatalyn-login-approval'); ?></a>
+				<a class="button" href="<?php echo esc_url(admin_url('admin.php?page=' . self::MENU_SLUG . '&gatalyn_tab=lockouts')); ?>"><?php esc_html_e('Lockouts', 'gatalyn-login-approval'); ?></a>
+			</p>
+
 			<div class="gatalyn-cards">
 				<?php foreach ($cards as $card) : ?>
 					<div class="gatalyn-card"><?php echo esc_html($card[0]); ?><b><?php echo esc_html((string) $card[1]); ?></b></div>
@@ -572,7 +577,7 @@ class Gatalyn_Settings
 			'$("#gatalyn-tab-"+id).show();' .
 			'$(".gatalyn-tab-link").removeClass("nav-tab-active");' .
 			'$(".gatalyn-tab-link[data-tab="+id+"]").addClass("nav-tab-active");' .
-			'$("#gatalyn-save").toggle(id!=="lockouts");' .
+			'$("#gatalyn-save,#gatalyn-save-top").toggle(id!=="lockouts");' .
 			'try{sessionStorage.setItem(SK,id);}catch(e){}' .
 			'}' .
 			'$(document).on("click",".gatalyn-tab-link",function(e){' .
@@ -627,7 +632,7 @@ class Gatalyn_Settings
 		wp_add_inline_style(
 			'wp-admin',
 			/* Tab content panels */
-			'#gatalyn-tabs{margin-bottom:0;}'
+			'#gatalyn-tabs{margin-bottom:0;}#gatalyn-save-top{margin:12px 0}'
 			. '.gatalyn-tab-content{display:none;border:1px solid #c3c4c7;border-top:none;padding:16px 20px 10px;background:#fff;}'
 			. '.gatalyn-tab-content table{margin-top:0;}'
 			. '.gatalyn-import-box{border-left:4px solid #2271b1;background:#f0f6fc;padding:4px 16px 12px;margin-bottom:16px;}'
@@ -727,6 +732,8 @@ class Gatalyn_Settings
 
 			<form method="post" action="options.php">
 				<?php settings_fields(self::OPTIONS_GROUP); ?>
+
+				<div id="gatalyn-save-top"><?php submit_button(null, 'primary', 'submit', false, array('id' => 'gatalyn-save-top-btn')); ?></div>
 
 				<!-- Tab navigation -->
 				<nav id="gatalyn-tabs" class="nav-tab-wrapper">
@@ -919,6 +926,11 @@ class Gatalyn_Settings
 			<?php if (empty($log)) : ?>
 				<p><em><?php esc_html_e('No lockouts recorded yet.', 'gatalyn-login-approval'); ?></em></p>
 			<?php else : ?>
+				<form method="post" action="<?php echo esc_url(admin_url('admin-post.php')); ?>" style="margin:0 0 12px;">
+					<input type="hidden" name="action" value="gatalyn_clear_log" />
+					<?php wp_nonce_field('gatalyn_clear_log'); ?>
+					<?php submit_button(__('Clear Log', 'gatalyn-login-approval'), 'secondary', 'submit', false); ?>
+				</form>
 				<table class="widefat striped">
 					<thead>
 						<tr>

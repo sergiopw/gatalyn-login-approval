@@ -3,7 +3,7 @@ Contributors: sergiopw
 Tags: login, security, limit login attempts, brute force, telegram
 Requires at least: 5.6
 Tested up to: 7.0
-Stable tag: 1.4.1
+Stable tag: 1.4.2
 Requires PHP: 7.4
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
@@ -89,6 +89,9 @@ Everything the original plugin stores: allowed retries, lockout duration, allowe
 "Hide the users endpoint" will not: it only removes the route that lists your usernames. "Require login for the whole REST API" can, because plugins and themes often call the API from the front end without a session, for example contact forms, AJAX search, store endpoints, or page builders. Only oEmbed stays public so that existing embeds of your site elsewhere keep working. Test your front end after enabling it.
 
 == Changelog ==
+
+= 1.4.2 =
+* Settings: the top bar (Save Changes, link to the Dashboard and the tabs) stays fixed while scrolling and no longer disappears on the Lockouts tab.
 
 = 1.4.1 =
 * The Save Changes button (Settings), the Settings and Lockouts buttons (Dashboard) and Clear Log (Lockouts) are now also shown at the top of the page.

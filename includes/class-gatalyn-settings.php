@@ -577,7 +577,7 @@ class Gatalyn_Settings
 			'$("#gatalyn-tab-"+id).show();' .
 			'$(".gatalyn-tab-link").removeClass("nav-tab-active");' .
 			'$(".gatalyn-tab-link[data-tab="+id+"]").addClass("nav-tab-active");' .
-			'$("#gatalyn-save,#gatalyn-save-top").toggle(id!=="lockouts");' .
+			'$("#gatalyn-save").toggle(id!=="lockouts");' .
 			'try{sessionStorage.setItem(SK,id);}catch(e){}' .
 			'}' .
 			'$(document).on("click",".gatalyn-tab-link",function(e){' .
@@ -632,7 +632,7 @@ class Gatalyn_Settings
 		wp_add_inline_style(
 			'wp-admin',
 			/* Tab content panels */
-			'#gatalyn-tabs{margin-bottom:0;}#gatalyn-save-top{margin:12px 0}'
+			'#gatalyn-tabs{margin-bottom:0;}#gatalyn-bar{position:sticky;top:32px;z-index:50;background:#f0f0f1;padding-top:10px;margin-bottom:0}#gatalyn-save-top{margin:0 0 10px}#gatalyn-save-top .button{margin-right:6px}'
 			. '.gatalyn-tab-content{display:none;border:1px solid #c3c4c7;border-top:none;padding:16px 20px 10px;background:#fff;}'
 			. '.gatalyn-tab-content table{margin-top:0;}'
 			. '.gatalyn-import-box{border-left:4px solid #2271b1;background:#f0f6fc;padding:4px 16px 12px;margin-bottom:16px;}'
@@ -733,7 +733,11 @@ class Gatalyn_Settings
 			<form method="post" action="options.php">
 				<?php settings_fields(self::OPTIONS_GROUP); ?>
 
-				<div id="gatalyn-save-top"><?php submit_button(null, 'primary', 'submit', false, array('id' => 'gatalyn-save-top-btn')); ?></div>
+				<div id="gatalyn-bar">
+				<div id="gatalyn-save-top">
+					<?php submit_button(null, 'primary', 'submit', false, array('id' => 'gatalyn-save-top-btn')); ?>
+					<a class="button" href="<?php echo esc_url(admin_url('admin.php?page=' . self::DASHBOARD_SLUG)); ?>"><?php esc_html_e('Dashboard', 'gatalyn-login-approval'); ?></a>
+				</div>
 
 				<!-- Tab navigation -->
 				<nav id="gatalyn-tabs" class="nav-tab-wrapper">
@@ -753,6 +757,7 @@ class Gatalyn_Settings
 						<?php esc_html_e('Lockouts', 'gatalyn-login-approval'); ?>
 					</a>
 				</nav>
+				</div>
 
 				<!-- General tab -->
 				<div id="gatalyn-tab-general" class="gatalyn-tab-content">

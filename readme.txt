@@ -3,7 +3,7 @@ Contributors: sergiopw
 Tags: login, security, limit login attempts, brute force, telegram
 Requires at least: 5.6
 Tested up to: 7.0
-Stable tag: 1.4.3
+Stable tag: 1.4.4
 Requires PHP: 7.4
 License: GPLv2 or later
 License URI: https://www.gnu.org/licenses/gpl-2.0.html
@@ -89,6 +89,10 @@ Everything the original plugin stores: allowed retries, lockout duration, allowe
 "Hide the users endpoint" will not: it only removes the route that lists your usernames. "Require login for the whole REST API" can, because plugins and themes often call the API from the front end without a session, for example contact forms, AJAX search, store endpoints, or page builders. Only oEmbed stays public so that existing embeds of your site elsewhere keep working. Test your front end after enabling it.
 
 == Changelog ==
+
+= 1.4.4 =
+* Approval request: when the limit of requests is reached (3 per account and 10 per address every 15 minutes), the form now says so instead of showing the "link sent" page with no email.
+* Approving a login clears that account's request count, so signing in from a second browser right after the first no longer runs into the limit.
 
 = 1.4.3 =
 * Telegram: when the bot already has a webhook, "Detect chat ID" now explains what to do instead of showing the raw API error.

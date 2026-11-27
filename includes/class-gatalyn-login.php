@@ -295,9 +295,26 @@ class Gatalyn_Login
         }
 
         if ('' !== $blocked) {
-            $user = false;
             Gatalyn_Stats::log_attempt($username, $blocked, 'approval');
-        } elseif ($user) {
+
+            // Say so instead of showing the "link sent" page with nothing sent,
+            // which looked like a lost email. Both limits are counted the same
+            // way for names that don't exist, so this tells nobody whether the
+            // account is real.
+            wp_safe_redirect(
+                add_query_arg(
+                    array(
+                        'gatalyn_error' => $blocked,
+                        'log'           => rawurlencode($username),
+                        'redirect_to'   => rawurlencode($redirect_to),
+                    ),
+                    wp_login_url()
+                )
+            );
+            exit;
+        }
+
+        if ($user) {
             Gatalyn_Stats::log_attempt($username, 'sent', 'approval');
         }
 
@@ -338,13 +355,12 @@ class Gatalyn_Login
             exit;
         }
 
-        // User not found (or throttled): show the same pending page with a fake
+        // User not found: show the same pending page with a fake
         // request_id. It has the same shape as a real one and the check_approval
         // endpoint answers 'pending' for unknown ids, so nothing leaks.
         // A name that doesn't exist counts as a failed login, like a wrong
         // password does, so guessing names here shows up in the dashboard and
-        // ends in a lockout. Throttled or locked-out requests are not counted again.
-        if (! $exists && '' === $blocked) {
+        if (! $exists) {
             Gatalyn_Stats::log_attempt($username, 'unknown', 'approval');
             Gatalyn_Stats::$quiet = true;
             $this->count_unknown_user($username);
@@ -433,6 +449,24 @@ class Gatalyn_Login
         $user_ok = $this->throttle('user:' . strtolower($username), self::THROTTLE_USER_LIMIT, self::THROTTLE_WINDOW);
 
         return $ip_ok && $user_ok;
+    }
+
+    /**
+     * Forgets the per-username request count of an account, under every name
+     * it can be asked for with (login, email and what was typed).
+     *
+     * @param WP_User $user       Account.
+     * @param string  $identifier Name typed in the form.
+     *
+     * @return void
+     */
+    private function reset_user_throttle($user, $identifier = '')
+    {
+        $names = array_unique(array_filter(array_map('strtolower', array($user->user_login, $user->user_email, $identifier))));
+
+        foreach ($names as $name) {
+            Gatalyn_Store::delete(Gatalyn_Limit_Login::KEY_PREFIX . 'rq_' . md5('user:' . $name));
+        }
     }
 
     /**
@@ -590,6 +624,11 @@ class Gatalyn_Login
 
         Gatalyn_Token::clear_user_revoked($user->ID);
         Gatalyn_Stats::record('approved');
+
+        // The owner just proved they hold the mailbox, so the requests that led
+        // here stop counting against the account. Otherwise logging in from a
+        // second browser right after the first ran into the limit.
+        $this->reset_user_throttle($user, (string) ($data['identifier'] ?? ''));
 
         if ('after' === $data['mode']) {
             // Let the browser that is waiting on the pending page finish its own
@@ -1076,6 +1115,9 @@ class Gatalyn_Login
         $error_messages = array(
             'empty_username' => __('Please enter your username or email address.', 'gatalyn-login-approval'),
             'security'       => __('Security check failed. Please try again.', 'gatalyn-login-approval'),
+            /* translators: %d: minutes */
+            'throttled'      => sprintf(__('Too many approval requests in a short time, so no new link was sent. Use the link from the last email, or wait up to %d minutes and try again.', 'gatalyn-login-approval'), (int) ceil(self::THROTTLE_WINDOW / MINUTE_IN_SECONDS)),
+            'locked'         => __('Too many failed login attempts from your address, so no link was sent. Please try again later.', 'gatalyn-login-approval'),
         );
 
         $error_html = '';
